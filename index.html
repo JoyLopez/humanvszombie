@@ -109,6 +109,7 @@ let wave=1;
 let bossAlive=false;
 
 let changingWave=false;
+
 let gameOver=false;
 
 
@@ -1889,54 +1890,45 @@ zombies.length;
 
 function update(){
 
-if(gameOver){
-    return;
-}
+    if(gameOver){
+        return;
+    }
 
 
-movePlayer();
+    movePlayer();
 
-updateBullets();
+    updateBullets();
 
-moveZombies();
+    moveZombies();
 
-updateMedkits();
+    updateMedkits();
 
-updateWave();
+    updateWave();
 
-updateUI();
+    updateUI();
 
 
 
-if(player.hp<=0){
+    if(player.hp<=0){
 
-    gameOver=true;
+        gameOver=true;
 
-    setTimeout(()=>{
 
-        ctx.fillStyle="rgba(0,0,0,0.7)";
-ctx.fillRect(0,0,900,600);
+        setTimeout(()=>{
 
-ctx.fillStyle="red";
-ctx.font="50px Arial";
-ctx.fillText(
-"GAME OVER",
-300,
-250
-);
+            alert(
+            "GAME OVER\nScore: "+score
+            );
 
-ctx.fillStyle="white";
-ctx.font="25px Arial";
-ctx.fillText(
-"Score: "+score,
-370,
-310
-);
 
-gameOver=true;
+            // restart without infinite loading
+            window.location.href = window.location.href;
 
-}
 
+        },200);
+
+
+    }
 
 }
 
@@ -2030,25 +2022,17 @@ drawBossBar();
 
 function gameLoop(){
 
+if(!gameOver){
 
+    update();
 
-update();
-
-
-
-draw();
-
-
-
-requestAnimationFrame(gameLoop);
-
-
+    draw();
 
 }
 
+requestAnimationFrame(gameLoop);
 
-
-gameLoop();
+}
 
 </script>
 

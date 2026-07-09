@@ -61,7 +61,7 @@ canvas{
 
 &nbsp;
 
-🔫 Weapon:
+Weapon:
 <span id="weapon">Pistol</span>
 
 <br>
@@ -85,9 +85,9 @@ const ctx=canvas.getContext("2d");
 
 
 
-// =====================
-// GAME DATA
-// =====================
+// =======================
+// GAME VARIABLES
+// =======================
 
 
 let keys={};
@@ -104,14 +104,11 @@ let buildings=[];
 
 let score=0;
 
+
 let wave=1;
 
+
 let bossAlive=false;
-
-let changingWave=false;
-
-let gameOver=false;
-
 
 
 let mouse={
@@ -126,9 +123,9 @@ y:300
 
 
 
-// =====================
+// =======================
 // PLAYER
-// =====================
+// =======================
 
 
 let player={
@@ -148,10 +145,9 @@ hp:100
 
 
 
-
-// =====================
+// =======================
 // WEAPONS
-// =====================
+// =======================
 
 
 let weapons={
@@ -211,9 +207,9 @@ let lastShot=0;
 
 
 
-// =====================
+// =======================
 // SOUND
-// =====================
+// =======================
 
 
 let sounds={};
@@ -248,14 +244,13 @@ loadSound(
 
 
 
-
 function playSound(name){
 
 if(sounds[name]){
 
 sounds[name].currentTime=0;
 
-sounds[name].play().catch(()=>{});
+sounds[name].play();
 
 }
 
@@ -267,9 +262,10 @@ sounds[name].play().catch(()=>{});
 
 
 
-// =====================
+
+// =======================
 // CONTROLS
-// =====================
+// =======================
 
 
 document.addEventListener(
@@ -360,18 +356,6 @@ mouse.y=e.clientY-rect.top;
 
 
 
-canvas.addEventListener(
-"mousedown",
-()=>{
-
-shoot();
-
-});
-
-
-
-
-
 
 
 
@@ -395,15 +379,18 @@ weapons[type].name;
 
 
 
-// =====================
-// SHOOT
-// =====================
+
+
+
+// =======================
+// SHOOTING
+// =======================
 
 
 function shoot(){
 
 
-let gun=
+let weapon=
 weapons[currentWeapon];
 
 
@@ -411,7 +398,7 @@ let now=Date.now();
 
 
 
-if(now-lastShot < gun.fireRate)
+if(now-lastShot < weapon.fireRate)
 
 return;
 
@@ -443,7 +430,10 @@ mouse.x-player.x
 
 
 
+
+
 if(currentWeapon=="shotgun"){
+
 
 
 for(let i=0;i<5;i++){
@@ -465,12 +455,14 @@ dx:Math.cos(spread)*10,
 
 dy:Math.sin(spread)*10,
 
-damage:gun.damage
+damage:weapon.damage
+
 
 });
 
 
 }
+
 
 
 }
@@ -488,7 +480,8 @@ dx:Math.cos(angle)*10,
 
 dy:Math.sin(angle)*10,
 
-damage:gun.damage
+damage:weapon.damage
+
 
 });
 
@@ -498,9 +491,9 @@ damage:gun.damage
 
 
 }
-// =====================
+// =======================
 // BUILDINGS
-// =====================
+// =======================
 
 
 buildings=[
@@ -530,12 +523,6 @@ h:90
 
 
 
-
-
-
-// =====================
-// COLLISION
-// =====================
 
 
 function checkCollision(x,y,size){
@@ -575,9 +562,9 @@ return false;
 
 
 
-// =====================
+// =======================
 // PLAYER MOVEMENT
-// =====================
+// =======================
 
 
 function movePlayer(){
@@ -590,28 +577,19 @@ let ny=player.y;
 
 
 if(keys["w"])
-
 ny-=player.speed;
 
 
-
 if(keys["s"])
-
 ny+=player.speed;
 
 
-
 if(keys["a"])
-
 nx-=player.speed;
 
 
-
 if(keys["d"])
-
 nx+=player.speed;
-
-
 
 
 
@@ -627,24 +605,15 @@ player.y=ny;
 
 
 
-
-
 player.x=Math.max(
-
 0,
-
 Math.min(900,player.x)
-
 );
 
 
-
 player.y=Math.max(
-
 0,
-
 Math.min(600,player.y)
-
 );
 
 
@@ -657,43 +626,41 @@ Math.min(600,player.y)
 
 
 
-// =====================
+
+// =======================
 // WAVE SYSTEM
-// =====================
+// =======================
+
+
+let zombiesLeft=0;
+
 
 
 function startWave(){
 
 
-let amount=
-
-5 + wave * 3;
-
+zombiesLeft=
+5 + wave*3;
 
 
-for(let i=0;i<amount;i++){
 
+for(let i=0;i<zombiesLeft;i++){
 
 spawnZombie();
-
 
 }
 
 
 
-
-if(wave % 5 == 0){
-
+if(wave%5==0){
 
 spawnBoss();
-
 
 }
 
 
 
 document.getElementById("wave").innerHTML=
-
 wave;
 
 
@@ -706,23 +673,19 @@ wave;
 
 
 
-
-// =====================
-// NORMAL ZOMBIES
-// =====================
+// =======================
+// SPAWN NORMAL ZOMBIES
+// =======================
 
 
 function spawnZombie(){
 
 
 let side=
-
 Math.floor(Math.random()*4);
 
 
-
 let x;
-
 let y;
 
 
@@ -730,50 +693,38 @@ let y;
 if(side==0){
 
 x=0;
-
 y=Math.random()*600;
 
 }
-
 
 
 if(side==1){
 
 x=900;
-
 y=Math.random()*600;
 
 }
 
 
-
 if(side==2){
 
 x=Math.random()*900;
-
 y=0;
 
 }
 
 
-
 if(side==3){
 
 x=Math.random()*900;
-
 y=600;
 
 }
 
 
 
-
-
 let fast=
-
 Math.random()<0.25;
-
-
 
 
 
@@ -781,13 +732,9 @@ zombies.push({
 
 
 type:
-
-fast ?
-
-"fast" :
-
+fast?
+"fast":
 "normal",
-
 
 
 x:x,
@@ -796,49 +743,31 @@ x:x,
 y:y,
 
 
-
 speed:
-
-fast ?
-
-2.5 :
-
+fast?
+2.5:
 1.2,
 
 
-
 hp:
-
-fast ?
-
-50 :
-
+fast?
+50:
 100,
 
 
-
 damage:
-
-fast ?
-
-0.8 :
-
+fast?
+0.8:
 0.4,
 
 
-
 size:
-
 25,
 
 
-
 color:
-
-fast ?
-
-"orange" :
-
+fast?
+"orange":
 "green"
 
 
@@ -855,17 +784,15 @@ fast ?
 
 
 
-
-// =====================
+// =======================
 // BOSS ZOMBIE
-// =====================
+// =======================
 
 
 function spawnBoss(){
 
 
 bossAlive=true;
-
 
 
 zombies.push({
@@ -899,11 +826,8 @@ color:"purple"
 
 
 
-
 document.getElementById("boss").innerHTML=
-
 "ACTIVE";
-
 
 
 }
@@ -915,14 +839,12 @@ document.getElementById("boss").innerHTML=
 
 
 
-
-// =====================
+// =======================
 // ZOMBIE MOVEMENT
-// =====================
+// =======================
 
 
 function moveZombies(){
-
 
 
 for(let z of zombies){
@@ -930,42 +852,25 @@ for(let z of zombies){
 
 
 let dx=
-
 player.x-z.x;
 
 
-
 let dy=
-
 player.y-z.y;
 
 
 
 let distance=
-
 Math.hypot(dx,dy);
 
 
 
-if(distance==0)
-
-continue;
-
-
-
-
-
 let nx=
-
 z.x+(dx/distance)*z.speed;
 
 
-
 let ny=
-
 z.y+(dy/distance)*z.speed;
-
-
 
 
 
@@ -978,7 +883,6 @@ z.y=ny;
 
 
 }
-
 
 
 
@@ -998,22 +902,16 @@ player.hp-=z.damage;
 
 }
 
-
-
-
-
-
-
-
-// =====================
+// =======================
 // START GAME
-// =====================
+// =======================
 
 
 startWave();
-// =====================
+
+// =======================
 // BULLET UPDATE
-// =====================
+// =======================
 
 
 function updateBullets(){
@@ -1025,32 +923,11 @@ for(let i=bullets.length-1;i>=0;i--){
 let b=bullets[i];
 
 
-
 b.x+=b.dx;
 
 b.y+=b.dy;
 
 
-
-
-
-// bullet hits wall
-
-if(checkCollision(b.x,b.y,5)){
-
-
-bullets.splice(i,1);
-
-continue;
-
-
-}
-
-
-
-
-
-// remove outside screen
 
 if(
 
@@ -1077,9 +954,6 @@ continue;
 
 
 
-
-// zombie hit
-
 for(let j=zombies.length-1;j>=0;j--){
 
 
@@ -1091,21 +965,16 @@ let z=zombies[j];
 if(
 
 Math.hypot(
-
 b.x-z.x,
-
 b.y-z.y
-
 )
 
-<z.size
+< z.size
 
 ){
 
 
-
 z.hp-=b.damage;
-
 
 
 bullets.splice(i,1);
@@ -1117,15 +986,20 @@ playSound("hit");
 
 
 
-
 if(z.hp<=0){
 
 
 
+score+=
+z.type=="boss"
+?
+500
+:
+10;
+
+
+
 if(z.type=="boss"){
-
-
-score+=500;
 
 
 bossAlive=false;
@@ -1133,14 +1007,6 @@ bossAlive=false;
 
 document.getElementById("boss").innerHTML=
 "None";
-
-
-}
-
-else{
-
-
-score+=10;
 
 
 }
@@ -1163,9 +1029,6 @@ break;
 
 
 
-}
-
-
 
 }
 
@@ -1175,15 +1038,20 @@ break;
 
 
 
+}
 
 
 
 
 
 
-// =====================
+
+
+
+
+// =======================
 // HEALTH PACKS
-// =====================
+// =======================
 
 
 function spawnMedkit(){
@@ -1192,10 +1060,12 @@ function spawnMedkit(){
 medkits.push({
 
 
-x:Math.random()*900,
+x:
+Math.random()*900,
 
 
-y:Math.random()*600
+y:
+Math.random()*600
 
 
 });
@@ -1212,6 +1082,7 @@ spawnMedkit,
 10000
 
 );
+
 
 
 
@@ -1238,7 +1109,9 @@ player.x-m.x,
 
 player.y-m.y
 
-)<30
+)
+
+<30
 
 ){
 
@@ -1280,10 +1153,9 @@ medkits.splice(i,1);
 
 
 
-
-// =====================
+// =======================
 // DRAW BUILDINGS
-// =====================
+// =======================
 
 
 function drawBuildings(){
@@ -1295,7 +1167,6 @@ for(let b of buildings){
 
 
 ctx.fillStyle="#555";
-
 
 
 ctx.fillRect(
@@ -1312,9 +1183,7 @@ b.h
 
 
 
-
-ctx.strokeStyle="#aaa";
-
+ctx.strokeStyle="#999";
 
 
 ctx.strokeRect(
@@ -1345,10 +1214,9 @@ b.h
 
 
 
-
-// =====================
+// =======================
 // DRAW PLAYER
-// =====================
+// =======================
 
 
 function drawPlayer(){
@@ -1356,7 +1224,6 @@ function drawPlayer(){
 
 
 // body
-
 
 ctx.fillStyle="blue";
 
@@ -1375,9 +1242,7 @@ player.y,
 
 
 
-
 // head
-
 
 ctx.fillStyle="#ffcc99";
 
@@ -1405,18 +1270,17 @@ ctx.fill();
 
 
 
-
-// gun
+// weapon direction
 
 
 ctx.strokeStyle="black";
+
 
 ctx.lineWidth=6;
 
 
 
 ctx.beginPath();
-
 
 
 ctx.moveTo(
@@ -1454,9 +1318,9 @@ ctx.stroke();
 
 
 
-// =====================
+// =======================
 // DRAW ZOMBIES
-// =====================
+// =======================
 
 
 function drawZombies(){
@@ -1466,6 +1330,8 @@ function drawZombies(){
 for(let z of zombies){
 
 
+
+// body
 
 ctx.fillStyle=z.color;
 
@@ -1486,11 +1352,10 @@ z.size+20
 
 
 
+
 // head
 
-
 ctx.beginPath();
-
 
 
 ctx.arc(
@@ -1536,28 +1401,25 @@ z.y-z.size-25,
 
 
 
-
-let maxHP;
-
-
-
-if(z.type=="boss")
-
-maxHP=1500;
-
-else if(z.type=="fast")
-
-maxHP=50;
-
-else
-
-maxHP=100;
-
-
-
+// health bar
 
 
 ctx.fillStyle="lime";
+
+
+let maxHP=
+
+
+z.type=="boss"
+?
+1500
+:
+z.type=="fast"
+?
+50
+:
+100;
+
 
 
 ctx.fillRect(
@@ -1588,10 +1450,9 @@ z.y-z.size-25,
 
 
 
-
-// =====================
+// =======================
 // DRAW MEDKITS
-// =====================
+// =======================
 
 
 function drawMedkits(){
@@ -1603,7 +1464,6 @@ for(let m of medkits){
 
 
 ctx.fillStyle="red";
-
 
 
 ctx.fillRect(
@@ -1621,7 +1481,6 @@ m.y-10,
 
 
 ctx.fillStyle="white";
-
 
 
 ctx.fillRect(
@@ -1652,10 +1511,9 @@ m.y-8,
 
 
 
-
-// =====================
+// =======================
 // DRAW BULLETS
-// =====================
+// =======================
 
 
 function drawBullets(){
@@ -1671,7 +1529,6 @@ for(let b of bullets){
 
 
 ctx.beginPath();
-
 
 
 ctx.arc(
@@ -1696,6 +1553,8 @@ ctx.fill();
 
 }
 
+
+
 }
 
 
@@ -1705,11 +1564,9 @@ ctx.fill();
 
 
 
-
-
-// =====================
-// BOSS HEALTH BAR
-// =====================
+// =======================
+// BOSS BAR
+// =======================
 
 
 function drawBossBar(){
@@ -1717,14 +1574,9 @@ function drawBossBar(){
 
 
 let boss=
-
 zombies.find(
-
 z=>z.type=="boss"
-
 );
-
-
 
 
 
@@ -1789,9 +1641,9 @@ ctx.fillText(
 
 
 }
-// =====================
+// =======================
 // UPDATE WAVE
-// =====================
+// =======================
 
 
 function updateWave(){
@@ -1799,28 +1651,24 @@ function updateWave(){
 
 if(
 
-zombies.length==0 &&
+zombies.length==0
 
-!bossAlive &&
+&&
 
-!changingWave
+!bossAlive
 
 ){
 
 
-changingWave=true;
-
 
 wave++;
+
 
 
 setTimeout(()=>{
 
 
 startWave();
-
-
-changingWave=false;
 
 
 },3000);
@@ -1839,14 +1687,13 @@ changingWave=false;
 
 
 
-
-
-// =====================
+// =======================
 // UPDATE UI
-// =====================
+// =======================
 
 
 function updateUI(){
+
 
 
 document.getElementById("hp").innerHTML=
@@ -1883,117 +1730,180 @@ zombies.length;
 
 
 
-// =====================
+// =======================
 // GAME UPDATE
-// =====================
+// =======================
 
 
 function update(){
 
-    if(gameOver){
-        return;
-    }
-
-    movePlayer();
-    updateBullets();
-    moveZombies();
-    updateMedkits();
-    updateWave();
-    updateUI();
-
-    if(player.hp <= 0 && !gameOver){
-
-        gameOver = true;
-
-        setTimeout(()=>{
-
-            alert("GAME OVER\nScore: " + score);
-
-            resetGame();
-
-        },200);
-    }
-
-} 
 
 
-// =====================
+movePlayer();
+
+
+
+updateBullets();
+
+
+
+moveZombies();
+
+
+
+updateMedkits();
+
+
+
+updateWave();
+
+
+
+updateUI();
+
+
+
+
+
+if(player.hp<=0){
+
+
+
+alert(
+
+"GAME OVER\nScore: "
+
++score
+
+);
+
+
+
+location.reload();
+
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+
+
+
+// =======================
 // DRAW EVERYTHING
-// =====================
+// =======================
 
 
 function draw(){
 
-    ctx.clearRect(0,0,900,600);
 
-    ctx.fillStyle="#333";
-    ctx.fillRect(0,0,900,600);
 
-    drawBuildings();
-    drawMedkits();
-    drawPlayer();
-    drawZombies();
-    drawBullets();
-    drawBossBar();
+ctx.clearRect(
+
+0,
+
+0,
+
+900,
+
+600
+
+);
+
+
+
+
+
+// background
+
+
+ctx.fillStyle="#333";
+
+
+ctx.fillRect(
+
+0,
+
+0,
+
+900,
+
+600
+
+);
+
+
+
+
+
+drawBuildings();
+
+
+
+drawMedkits();
+
+
+
+drawPlayer();
+
+
+
+drawZombies();
+
+
+
+drawBullets();
+
+
+
+drawBossBar();
+
+
+
 }
-    
-// =====================
-// RESET GAME
-// =====================
-function resetGame(){
-
-    player.x=450;
-    player.y=300;
-    player.hp=100;
-
-
-    score=0;
-    wave=1;
-
-
-    ammo=weapons[currentWeapon].ammo;
-
-
-    bullets=[];
-
-    zombies=[];
-
-    medkits=[];
-
-
-    bossAlive=false;
-
-    changingWave=false;
-
-
-    gameOver=false;
-
-
-    document.getElementById("boss").innerHTML="None";
-
-
-    document.getElementById("weapon").innerHTML=
-    weapons[currentWeapon].name;
-
-
-    startWave();
-
-}
 
 
 
-// =====================
+
+
+
+
+
+
+// =======================
 // GAME LOOP
-// =====================
+// =======================
+
 
 function gameLoop(){
-    update();
-    draw();
-    requestAnimationFrame(gameLoop);
+
+
+
+update();
+
+
+
+draw();
+
+
+
+requestAnimationFrame(gameLoop);
+
+
+
 }
 
-gameLoop();
 
+
+gameLoop();
 </script>
 
 </body>

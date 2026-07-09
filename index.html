@@ -2007,11 +2007,48 @@ drawBossBar();
 
 }
 
+// =====================
+// RESET GAME
+// =====================
+function resetGame(){
+
+    player.x=450;
+    player.y=300;
+    player.hp=100;
 
 
+    score=0;
+    wave=1;
 
 
+    ammo=weapons[currentWeapon].ammo;
 
+
+    bullets=[];
+
+    zombies=[];
+
+    medkits=[];
+
+
+    bossAlive=false;
+
+    changingWave=false;
+
+
+    gameOver=false;
+
+
+    document.getElementById("boss").innerHTML="None";
+
+
+    document.getElementById("weapon").innerHTML=
+    weapons[currentWeapon].name;
+
+
+    startWave();
+
+}
 
 
 
@@ -2022,13 +2059,9 @@ drawBossBar();
 
 function gameLoop(){
 
-if(!gameOver){
+update();
 
-    update();
-
-    draw();
-
-}
+draw();
 
 requestAnimationFrame(gameLoop);
 

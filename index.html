@@ -1894,35 +1894,27 @@ function update(){
         return;
     }
 
-
     movePlayer();
-
     updateBullets();
-
     moveZombies();
-
     updateMedkits();
-
     updateWave();
-
     updateUI();
-
-
 
     if(player.hp <= 0 && !gameOver){
 
-    gameOver = true;
+        gameOver = true;
 
-    setTimeout(()=>{
+        setTimeout(()=>{
 
-        alert("GAME OVER\nScore: " + score);
+            alert("GAME OVER\nScore: " + score);
 
-        resetGame();
+            resetGame();
 
         },200);
-
     }
-}
+
+} 
 
 
 // =====================
@@ -1932,72 +1924,19 @@ function update(){
 
 function draw(){
 
+    ctx.clearRect(0,0,900,600);
 
+    ctx.fillStyle="#333";
+    ctx.fillRect(0,0,900,600);
 
-ctx.clearRect(
-
-0,
-
-0,
-
-900,
-
-600
-
-);
-
-
-
-
-
-// background
-
-
-ctx.fillStyle="#333";
-
-
-ctx.fillRect(
-
-0,
-
-0,
-
-900,
-
-600
-
-);
-
-
-
-
-
-drawBuildings();
-
-
-
-drawMedkits();
-
-
-
-drawPlayer();
-
-
-
-drawZombies();
-
-
-
-drawBullets();
-
-
-
-drawBossBar();
-
-
-
+    drawBuildings();
+    drawMedkits();
+    drawPlayer();
+    drawZombies();
+    drawBullets();
+    drawBossBar();
 }
-
+    
 // =====================
 // RESET GAME
 // =====================

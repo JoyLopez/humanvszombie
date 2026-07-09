@@ -1,9 +1,10 @@
 <!DOCTYPE html>
 <html>
 <head>
-<title>Zombie Survival</title>
+<title>Zombie Survival Pro</title>
 
 <style>
+
 body{
     margin:0;
     background:#111;
@@ -23,18 +24,51 @@ canvas{
     font-size:20px;
     padding:10px;
 }
+
 </style>
 
 </head>
+
 <body>
 
+
 <div id="info">
-❤️ HP: <span id="hp">100</span>
+
+❤️ HP:
+<span id="hp">100</span>
+
 &nbsp;
-⭐ Score: <span id="score">0</span>
+
+⭐ Score:
+<span id="score">0</span>
+
 &nbsp;
-🔫 Ammo: <span id="ammo">30</span>
+
+🔫 Ammo:
+<span id="ammo">30</span>
+
+<br>
+
+🌊 Wave:
+<span id="wave">1</span>
+
+&nbsp;
+
+🧟 Zombies:
+<span id="zcount">0</span>
+
+&nbsp;
+
+Weapon:
+<span id="weapon">Pistol</span>
+
+<br>
+
+Boss:
+<span id="boss">None</span>
+
 </div>
+
 
 
 <canvas id="game" width="900" height="600"></canvas>
@@ -42,33 +76,410 @@ canvas{
 
 <script>
 
+
 const canvas=document.getElementById("game");
 const ctx=canvas.getContext("2d");
+
+
+
+// =====================
+// GAME DATA
+// =====================
 
 
 let keys={};
 
 let bullets=[];
+
 let zombies=[];
+
 let medkits=[];
+
+let buildings=[];
 
 
 let score=0;
 
 let ammo=30;
 
+
+let wave=1;
+
+let bossAlive=false;
+
+
 let mouse={
 x:450,
 y:300
 };
+// ===============================
+// DRAW BULLETS
+// ===============================
+
+
+function drawBullets(){
+
+
+ctx.fillStyle="yellow";
+
+
+for(let b of bullets){
+
+
+ctx.beginPath();
+
+
+ctx.arc(
+
+b.x,
+
+b.y,
+
+5,
+
+0,
+
+Math.PI*2
+
+);
+
+
+ctx.fill();
+
+
+}
 
 
 
+}
+
+
+
+
+
+
+
+
+// ===============================
+// UPDATE WAVE SYSTEM
+// ===============================
+
+
+function updateWave(){
+
+
+
+if(
+zombies.length==0 &&
+!bossAlive
+){
+
+
+
+wave++;
+
+
+setTimeout(()=>{
+
+
+startWave();
+
+
+},3000);
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+
+
+
+// ===============================
+// UI UPDATE
+// ===============================
+
+
+function updateUI(){
+
+
+document.getElementById("hp").innerHTML=
+Math.floor(player.hp);
+
+
+
+document.getElementById("score").innerHTML=
+score;
+
+
+
+document.getElementById("ammo").innerHTML=
+ammo;
+
+
+
+document.getElementById("zcount").innerHTML=
+zombies.length;
+
+
+
+}
+
+
+
+
+
+
+
+
+
+// ===============================
+// GAME UPDATE
+// ===============================
+
+
+function update(){
+
+
+
+movePlayer();
+
+
+
+updateBullets();
+
+
+
+moveZombies();
+
+
+
+updateMedkits();
+
+
+
+updateWave();
+
+
+
+updateUI();
+
+
+
+
+
+if(player.hp<=0){
+
+
+alert(
+"GAME OVER\nScore: "+score
+);
+
+
+location.reload();
+
+
+}
+
+
+
+}
+
+
+
+
+
+
+
+
+
+// ===============================
+// DRAW EVERYTHING
+// ===============================
+
+
+function draw(){
+
+
+ctx.clearRect(
+
+0,
+
+0,
+
+900,
+
+600
+
+);
+
+
+
+// background
+
+
+ctx.fillStyle="#333";
+
+
+ctx.fillRect(
+
+0,
+
+0,
+
+900,
+
+600
+
+);
+
+
+
+
+// buildings
+
+
+drawBuildings();
+
+
+
+
+// items
+
+
+drawMedkits();
+
+
+
+
+// characters
+
+
+drawPlayer();
+
+
+drawZombies();
+
+
+
+
+// bullets
+
+
+drawBullets();
+
+
+
+
+// boss bar
+
+
+drawBossBar();
+
+
+
+}
+
+
+
+
+
+
+
+
+
+// ===============================
+// GAME LOOP
+// ===============================
+
+
+function loop(){
+
+
+update();
+
+
+draw();
+
+
+requestAnimationFrame(loop);
+
+
+}
+
+
+
+loop();
+
+
+
+// =====================
+// WEAPONS
+// =====================
+
+
+let weapons={
+
+
+pistol:{
+
+name:"Pistol",
+damage:25,
+ammo:12,
+fireRate:300
+
+},
+
+
+shotgun:{
+
+name:"Shotgun",
+damage:15,
+ammo:6,
+fireRate:700,
+spread:5
+
+},
+
+
+rifle:{
+
+name:"Rifle",
+damage:10,
+ammo:30,
+fireRate:100
+
+
+}
+
+
+};
+
+
+
+let currentWeapon="pistol";
+
+let lastShot=0;
+
+
+
+
+// =====================
 // PLAYER
+// =====================
+
 
 let player={
 
 x:450,
+
 y:300,
 
 speed:4,
@@ -81,20 +492,97 @@ hp:100
 
 
 
+// =====================
+// SOUND SYSTEM
+// =====================
+
+
+let sounds={};
+
+
+function loadSound(name,url){
+
+sounds[name]=new Audio(url);
+
+}
+
+
+// free sound placeholders
+
+loadSound(
+"shoot",
+"https://actions.google.com/sounds/v1/weapons/gunshot.ogg"
+);
+
+
+loadSound(
+"hit",
+"https://actions.google.com/sounds/v1/impacts/crash.ogg"
+);
+
+
+loadSound(
+"heal",
+"https://actions.google.com/sounds/v1/cartoon/pop.ogg"
+);
+
+
+
+function playSound(name){
+
+if(sounds[name]){
+
+sounds[name].currentTime=0;
+
+sounds[name].play();
+
+}
+
+}
+
+
+
+
+
+// =====================
+// CONTROLS
+// =====================
+
+
 document.addEventListener("keydown",e=>{
+
 
 keys[e.key.toLowerCase()]=true;
 
 
-if(e.code=="Space")
-shoot();
+
+// weapon switch
+
+if(e.key=="1")
+changeWeapon("pistol");
 
 
-if(e.key.toLowerCase()=="r")
-ammo=30;
+if(e.key=="2")
+changeWeapon("shotgun");
+
+
+if(e.key=="3")
+changeWeapon("rifle");
+
+
+
+// reload
+
+if(e.key.toLowerCase()=="r"){
+
+ammo=weapons[currentWeapon].ammo;
+
+}
+
 
 
 });
+
 
 
 document.addEventListener("keyup",e=>{
@@ -106,12 +594,17 @@ keys[e.key.toLowerCase()]=false;
 
 
 
+
 canvas.addEventListener("mousemove",e=>{
+
 
 let rect=canvas.getBoundingClientRect();
 
+
 mouse.x=e.clientX-rect.left;
+
 mouse.y=e.clientY-rect.top;
+
 
 });
 
@@ -119,11 +612,58 @@ mouse.y=e.clientY-rect.top;
 
 
 
+function changeWeapon(w){
+
+
+currentWeapon=w;
+
+
+ammo=weapons[w].ammo;
+
+
+document.getElementById("weapon").innerHTML=
+weapons[w].name;
+
+
+}
+
+
+
+
+
+// =====================
+// SHOOT SYSTEM START
+// =====================
+
+
 function shoot(){
+
+
+let gun=weapons[currentWeapon];
+
+
+let now=Date.now();
+
+
+
+if(now-lastShot < gun.fireRate)
+return;
+
 
 
 if(ammo<=0)
 return;
+
+
+
+lastShot=now;
+
+
+ammo--;
+
+
+playSound("shoot");
+
 
 
 let angle=Math.atan2(
@@ -136,6 +676,41 @@ mouse.x-player.x
 
 
 
+
+
+if(currentWeapon=="shotgun"){
+
+
+for(let i=0;i<5;i++){
+
+
+let spread=
+(angle-0.2)+(Math.random()*0.4);
+
+
+bullets.push({
+
+x:player.x,
+
+y:player.y,
+
+dx:Math.cos(spread)*10,
+
+dy:Math.sin(spread)*10,
+
+damage:gun.damage
+
+});
+
+
+}
+
+
+}
+
+else{
+
+
 bullets.push({
 
 x:player.x,
@@ -144,15 +719,124 @@ y:player.y,
 
 dx:Math.cos(angle)*10,
 
-dy:Math.sin(angle)*10
+dy:Math.sin(angle)*10,
+
+damage:gun.damage
 
 });
 
 
-ammo--;
+}
+
+
+
+}
+// ===============================
+// BUILDINGS / MAP OBSTACLES
+// ===============================
+
+
+buildings=[
+
+{
+x:150,
+y:120,
+w:120,
+h:100
+},
+
+{
+x:600,
+y:100,
+w:150,
+h:120
+},
+
+{
+x:300,
+y:400,
+w:180,
+h:80
+}
+
+];
+
+
+
+
+
+function collisionBox(x,y,w,h){
+
+
+for(let b of buildings){
+
+
+if(
+x+w/2 > b.x &&
+x-w/2 < b.x+b.w &&
+y+h/2 > b.y &&
+y-h/2 < b.y+b.h
+){
+
+return true;
 
 }
 
+
+}
+
+
+return false;
+
+}
+
+
+
+
+
+
+// ===============================
+// ZOMBIE WAVES
+// ===============================
+
+
+let zombiesToSpawn=5;
+
+let spawnTimer=0;
+
+let waveDelay=0;
+
+
+
+
+function startWave(){
+
+
+zombiesToSpawn=
+5 + wave*3;
+
+
+
+for(let i=0;i<zombiesToSpawn;i++){
+
+spawnZombie();
+
+}
+
+
+
+if(wave%5==0){
+
+spawnBoss();
+
+}
+
+
+document.getElementById("wave").innerHTML=
+wave;
+
+
+}
 
 
 
@@ -162,74 +846,160 @@ ammo--;
 function spawnZombie(){
 
 
+let side=Math.floor(Math.random()*4);
+
+
+let x,y;
+
+
+if(side==0){
+
+x=0;
+y=Math.random()*600;
+
+}
+
+if(side==1){
+
+x=900;
+y=Math.random()*600;
+
+}
+
+if(side==2){
+
+x=Math.random()*900;
+y=0;
+
+}
+
+if(side==3){
+
+x=Math.random()*900;
+y=600;
+
+}
+
+
+
 let fast=Math.random()<0.25;
+
 
 
 zombies.push({
 
-x:Math.random()*900,
+type:fast?"fast":"normal",
 
-y:Math.random()*600,
+x:x,
+
+y:y,
 
 speed:fast?2.5:1.2,
 
-hp:fast?30:60,
+hp:fast?40:80,
+
+damage:0.4,
+
+size:25,
 
 color:fast?"orange":"green"
 
 });
 
 
+
 }
 
 
 
-setInterval(spawnZombie,1200);
 
 
 
 
 
-function spawnMedkit(){
+// ===============================
+// BOSS ZOMBIE
+// ===============================
 
 
-medkits.push({
+function spawnBoss(){
 
-x:Math.random()*900,
 
-y:Math.random()*600
+bossAlive=true;
+
+
+zombies.push({
+
+type:"boss",
+
+x:450,
+
+y:50,
+
+speed:0.7,
+
+hp:1000,
+
+damage:1,
+
+size:60,
+
+color:"purple"
 
 });
 
 
+document.getElementById("boss").innerHTML=
+"ACTIVE";
+
+
 }
 
 
-setInterval(spawnMedkit,10000);
 
 
 
 
 
+
+
+// ===============================
+// MOVE PLAYER WITH BUILDINGS
+// ===============================
 
 
 function movePlayer(){
 
 
+let nx=player.x;
+
+let ny=player.y;
+
+
+
 if(keys["w"])
-player.y-=player.speed;
+ny-=player.speed;
 
 
 if(keys["s"])
-player.y+=player.speed;
+ny+=player.speed;
 
 
 if(keys["a"])
-player.x-=player.speed;
+nx-=player.speed;
 
 
 if(keys["d"])
-player.x+=player.speed;
+nx+=player.speed;
+
+
+
+if(!collisionBox(nx,player.y,20,35))
+player.x=nx;
+
+
+if(!collisionBox(player.x,ny,20,35))
+player.y=ny;
 
 
 
@@ -247,10 +1017,72 @@ Math.min(600,player.y)
 
 }
 
+// ===============================
+// ZOMBIE MOVEMENT WITH BUILDINGS
+// ===============================
+
+
+function moveZombies(){
+
+
+for(let z of zombies){
+
+
+let dx=player.x-z.x;
+
+let dy=player.y-z.y;
+
+
+let dist=Math.hypot(dx,dy);
 
 
 
+let nx=z.x+(dx/dist)*z.speed;
 
+let ny=z.y+(dy/dist)*z.speed;
+
+
+
+if(!collisionBox(nx,ny,z.size,z.size)){
+
+
+z.x=nx;
+
+z.y=ny;
+
+
+}
+
+
+
+if(dist < z.size){
+
+
+player.hp-=z.damage;
+
+
+}
+
+
+
+}
+
+
+
+}
+
+
+
+// ===============================
+// START FIRST WAVE
+// ===============================
+
+
+startWave();
+
+// ===============================
+// BULLET UPDATE WITH DAMAGE
+// ===============================
 
 
 function updateBullets(){
@@ -263,98 +1095,73 @@ let b=bullets[i];
 
 
 b.x+=b.dx;
-
 b.y+=b.dy;
 
 
 
 if(
-b.x<0||
-b.x>900||
-b.y<0||
+b.x<0 ||
+b.x>900 ||
+b.y<0 ||
 b.y>600
-)
+){
 
 bullets.splice(i,1);
 
-
-
-}
-
+continue;
 
 }
 
 
 
 
+for(let j=zombies.length-1;j>=0;j--){
 
 
-
-function updateZombies(){
-
-
-for(let i=zombies.length-1;i>=0;i--){
-
-
-let z=zombies[i];
-
-
-let dx=player.x-z.x;
-
-let dy=player.y-z.y;
-
-
-let dist=Math.hypot(dx,dy);
-
-
-
-z.x+=dx/dist*z.speed;
-
-z.y+=dy/dist*z.speed;
-
-
-
-if(dist<25){
-
-player.hp-=0.4;
-
-}
-
-
-
-
-for(let j=bullets.length-1;j>=0;j--){
-
-
-let b=bullets[j];
+let z=zombies[j];
 
 
 if(Math.hypot(
 b.x-z.x,
 b.y-z.y
-)<20){
+)<z.size){
 
 
-z.hp-=25;
+z.hp-=b.damage;
 
 
-bullets.splice(j,1);
+playSound("hit");
 
 
-}
-
-
-}
-
-
+bullets.splice(i,1);
 
 
 if(z.hp<=0){
 
 
-zombies.splice(i,1);
+score+=
+z.type=="boss"?500:10;
 
-score+=10;
+
+
+if(z.type=="boss"){
+
+bossAlive=false;
+
+document.getElementById("boss").innerHTML="None";
+
+}
+
+
+
+zombies.splice(j,1);
+
+
+}
+
+
+
+break;
 
 
 }
@@ -369,8 +1176,19 @@ score+=10;
 
 
 
+}
 
 
+
+
+
+
+
+
+
+// ===============================
+// MEDKIT UPDATE
+// ===============================
 
 
 function updateMedkits(){
@@ -382,17 +1200,24 @@ for(let i=medkits.length-1;i>=0;i--){
 let m=medkits[i];
 
 
+
 if(Math.hypot(
+
 player.x-m.x,
+
 player.y-m.y
-)<25){
+
+)<30){
 
 
-player.hp+=30;
+player.hp+=40;
 
 
 if(player.hp>100)
 player.hp=100;
+
+
+playSound("heal");
 
 
 medkits.splice(i,1);
@@ -401,6 +1226,89 @@ medkits.splice(i,1);
 }
 
 
+}
+
+
+
+}
+
+
+
+
+
+
+
+
+// ===============================
+// SPAWN MEDKITS
+// ===============================
+
+
+setInterval(()=>{
+
+
+medkits.push({
+
+x:Math.random()*900,
+
+y:Math.random()*600
+
+});
+
+
+},12000);
+
+
+
+
+
+
+
+
+
+// ===============================
+// DRAW BUILDINGS
+// ===============================
+
+
+function drawBuildings(){
+
+
+for(let b of buildings){
+
+
+ctx.fillStyle="#555";
+
+
+ctx.fillRect(
+
+b.x,
+
+b.y,
+
+b.w,
+
+b.h
+
+);
+
+
+
+ctx.strokeStyle="#999";
+
+
+ctx.strokeRect(
+
+b.x,
+
+b.y,
+
+b.w,
+
+b.h
+
+);
+
 
 }
 
@@ -410,60 +1318,95 @@ medkits.splice(i,1);
 
 
 
+
+
+
+
+// ===============================
+// DRAW PLAYER
+// ===============================
 
 
 function drawPlayer(){
+
 
 
 // body
 
 ctx.fillStyle="blue";
 
+
 ctx.fillRect(
+
 player.x-12,
+
 player.y,
+
 24,
+
 35
+
 );
+
+
 
 
 // head
 
 ctx.fillStyle="#ffcc99";
 
+
 ctx.beginPath();
 
+
 ctx.arc(
+
 player.x,
+
 player.y-12,
+
 12,
+
 0,
+
 Math.PI*2
+
 );
+
 
 ctx.fill();
 
 
-// gun
+
+// weapon
 
 ctx.strokeStyle="black";
 
 ctx.lineWidth=6;
 
+
 ctx.beginPath();
 
+
 ctx.moveTo(
+
 player.x,
-player.y+5
+
+player.y+10
+
 );
+
 
 ctx.lineTo(
+
 mouse.x,
+
 mouse.y
+
 );
 
-ctx.stroke();
 
+ctx.stroke();
 
 
 }
@@ -474,212 +1417,238 @@ ctx.stroke();
 
 
 
+
+
+// ===============================
+// DRAW ZOMBIES
+// ===============================
+
+
 function drawZombies(){
 
 
-zombies.forEach(z=>{
+
+for(let z of zombies){
+
+
+
+// body
 
 
 ctx.fillStyle=z.color;
 
 
 ctx.fillRect(
-z.x-15,
+
+z.x-z.size/2,
+
 z.y,
-30,
-35
+
+z.size,
+
+z.size+20
+
 );
 
 
 
-ctx.fillStyle="#99aa66";
+// head
 
 
 ctx.beginPath();
 
+
 ctx.arc(
+
 z.x,
-z.y-12,
-14,
+
+z.y-10,
+
+z.size/2,
+
 0,
+
 Math.PI*2
+
 );
+
 
 ctx.fill();
 
 
 
-});
 
-
-}
-
-
-
-
-
-
-
-function drawBullets(){
-
-
-ctx.fillStyle="yellow";
-
-
-bullets.forEach(b=>{
-
-
-ctx.beginPath();
-
-ctx.arc(
-b.x,
-b.y,
-5,
-0,
-Math.PI*2
-);
-
-ctx.fill();
-
-
-});
-
-
-}
-
-
-
-
-
-
-function drawMedkits(){
+// health bar
 
 
 ctx.fillStyle="red";
 
 
-medkits.forEach(m=>{
+ctx.fillRect(
+
+z.x-30,
+
+z.y-z.size-20,
+
+60,
+
+6
+
+);
+
+
+
+ctx.fillStyle="lime";
 
 
 ctx.fillRect(
-m.x-10,
-m.y-10,
+
+z.x-30,
+
+z.y-z.size-20,
+
+60*(z.hp/(z.type=="boss"?1000:z.type=="fast"?40:80)),
+
+6
+
+);
+
+
+
+}
+
+
+}
+
+
+
+
+
+
+
+
+
+// ===============================
+// DRAW BOSS WARNING
+// ===============================
+
+
+function drawBossBar(){
+
+
+let boss=zombies.find(z=>z.type=="boss");
+
+
+if(boss){
+
+
+ctx.fillStyle="red";
+
+
+ctx.fillRect(
+
+200,
+
 20,
+
+500,
+
 20
+
+);
+
+
+
+ctx.fillStyle="purple";
+
+
+ctx.fillRect(
+
+200,
+
+20,
+
+500*(boss.hp/1000),
+
+20
+
 );
 
 
 
 ctx.fillStyle="white";
 
-ctx.fillRect(
-m.x-3,
-m.y-8,
-6,
-16
+
+ctx.fillText(
+
+"BOSS",
+
+430,
+
+35
+
 );
+
+
+}
+
+
+}
+
+
+
+
+
+
+
+
+// ===============================
+// DRAW MEDKITS
+// ===============================
+
+
+function drawMedkits(){
+
+
+for(let m of medkits){
 
 
 ctx.fillStyle="red";
 
 
-});
+ctx.fillRect(
 
+m.x-10,
 
-}
+m.y-10,
 
+20,
 
+20
 
-
-
-
-
-function update(){
-
-
-movePlayer();
-
-updateBullets();
-
-updateZombies();
-
-updateMedkits();
-
-
-
-document.getElementById("hp").innerHTML=
-Math.floor(player.hp);
-
-
-document.getElementById("score").innerHTML=
-score;
-
-
-document.getElementById("ammo").innerHTML=
-ammo;
-
-
-
-if(player.hp<=0){
-
-alert("GAME OVER");
-
-location.reload();
-
-}
-
-
-}
-
-
-
-
-
-
-
-function draw(){
-
-
-ctx.clearRect(
-0,
-0,
-900,
-600
 );
 
 
-drawMedkits();
 
-drawPlayer();
+ctx.fillStyle="white";
 
-drawZombies();
 
-drawBullets();
+ctx.fillRect(
+
+m.x-3,
+
+m.y-8,
+
+6,
+
+16
+
+);
 
 
 }
 
 
 
-
-
-
-
-function loop(){
-
-update();
-
-draw();
-
-requestAnimationFrame(loop);
-
 }
 
-
-loop();
-
-
-</script>
-
-</body>
-</html>

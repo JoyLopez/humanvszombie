@@ -1986,17 +1986,12 @@ function resetGame(){
 // GAME LOOP
 // =====================
 
-
 function gameLoop(){
-
-update();
-
-draw();
-
-requestAnimationFrame(gameLoop);
-
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
 }
-// Start the game
+
 gameLoop();
 
 </script>

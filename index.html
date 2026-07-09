@@ -109,6 +109,7 @@ let wave=1;
 let bossAlive=false;
 
 let changingWave=false;
+let gameOver=false;
 
 
 
@@ -1888,63 +1889,56 @@ zombies.length;
 
 function update(){
 
+if(gameOver){
+    return;
+}
 
 
 movePlayer();
 
-
-
 updateBullets();
-
-
 
 moveZombies();
 
-
-
 updateMedkits();
 
-
-
 updateWave();
-
-
 
 updateUI();
 
 
 
-
-
 if(player.hp<=0){
 
+    gameOver=true;
 
+    setTimeout(()=>{
 
-alert(
+        ctx.fillStyle="rgba(0,0,0,0.7)";
+ctx.fillRect(0,0,900,600);
 
-"GAME OVER\nScore: "
-
-+score
-
+ctx.fillStyle="red";
+ctx.font="50px Arial";
+ctx.fillText(
+"GAME OVER",
+300,
+250
 );
 
+ctx.fillStyle="white";
+ctx.font="25px Arial";
+ctx.fillText(
+"Score: "+score,
+370,
+310
+);
 
-
-location.reload();
-
-
+gameOver=true;
 
 }
 
 
-
 }
-
-
-
-
-
-
 
 
 

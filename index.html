@@ -1909,29 +1909,19 @@ function update(){
 
 
 
-    if(player.hp<=0){
+    if(player.hp <= 0 && !gameOver){
 
-        gameOver=true;
+    gameOver = true;
 
+    setTimeout(()=>{
 
-        setTimeout(()=>{
+        alert("GAME OVER\nScore: " + score);
 
-            alert(
-            "GAME OVER\nScore: "+score
-            );
+        resetGame();
 
-
-            // restart without infinite loading
-            window.location.href = window.location.href;
-
-
-        },200);
-
-
-    }
+    },200);
 
 }
-
 
 
 // =====================
@@ -2066,6 +2056,8 @@ draw();
 requestAnimationFrame(gameLoop);
 
 }
+// Start the game
+gameLoop();
 
 </script>
 

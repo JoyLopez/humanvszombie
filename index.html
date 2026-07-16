@@ -21,11 +21,16 @@ html,body{ margin:0; height:100%; background:var(--bg); color:var(--text);
   gap:10px; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:8px 12px; font-size:13px; }
 .hud-group{ display:flex; align-items:center; gap:10px; flex-wrap:wrap; }
 .bar{ position:relative; width:100px; height:12px; background:#242a30; border-radius:6px; overflow:hidden; }
+.bar-sm{ width:64px; height:9px; }
 .bar-fill{ height:100%; width:100%; transition:width .12s linear; }
 .bar-hp .bar-fill{ background:linear-gradient(90deg,#39d98a,#f2c94c,#eb5757); }
 .bar-armor .bar-fill{ background:linear-gradient(90deg,#4fa6ff,#7fd7ff); }
 .bar-stamina .bar-fill{ background:linear-gradient(90deg,#f1c40f,#ffe680); }
 .bar-reload .bar-fill{ background:var(--accent); }
+.bar-weight .bar-fill{ background:linear-gradient(90deg,#9b59b6,#c39bd3); }
+.bar-hunger .bar-fill{ background:linear-gradient(90deg,#e67e22,#f5b041); }
+.bar-thirst .bar-fill{ background:linear-gradient(90deg,#3498db,#85c1e9); }
+.bar-flash .bar-fill{ background:linear-gradient(90deg,#f4d03f,#fef9e7); }
 .bar-label{ position:absolute; inset:0; display:flex; align-items:center; justify-content:center; font-size:9px; color:#fff; text-shadow:0 1px 2px #000; }
 .stat{ display:flex; align-items:center; gap:5px; white-space:nowrap; }
 .stat b{ color:var(--accent); font-weight:700; }
@@ -34,6 +39,8 @@ button{ padding:6px 12px; font-size:13px; cursor:pointer; background:var(--accen
 button:active{ transform:scale(0.95); }
 button.secondary{ background:var(--panel2); color:var(--text); border:1px solid var(--border); }
 button.danger{ background:var(--danger); color:#fff; }
+button:disabled{ opacity:0.35; cursor:not-allowed; }
+button.tiny{ padding:3px 7px; font-size:11px; }
 
 /* ---------- Stage ---------- */
 #stage{ position:relative; width:100%; max-width:960px; aspect-ratio:960/600; }
@@ -73,7 +80,7 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
 /* Touch controls */
 #touchControls{ display:none; }
 @media (hover:none) and (pointer:coarse){ #touchControls{ display:block; } }
-#joystickZone,#fireZone{ position:absolute; bottom:0; width:50%; height:42%; z-index:5; }
+#joystickZone,#fireZone{ position:absolute; bottom:0; width:50%; height:36%; z-index:5; }
 #joystickZone{ left:0; } #fireZone{ right:0; }
 #joystickBase{ position:absolute; width:90px; height:90px; border-radius:50%; background:rgba(255,255,255,0.08);
   border:2px solid rgba(255,255,255,0.25); display:none; }
@@ -83,6 +90,35 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
 .weapon-select button{ padding:4px 7px; font-size:11px; opacity:0.75; }
 .weapon-select button.active{ opacity:1; outline:2px solid #fff; }
 .weapon-select button.locked{ opacity:0.35; }
+
+/* ---------- Inventory / Crafting / Equipment ---------- */
+.inv-grid{ display:grid; grid-template-columns:repeat(6,1fr); gap:6px; margin-top:6px; }
+.inv-slot{ position:relative; width:100%; aspect-ratio:1; background:var(--panel2); border:2px solid var(--border);
+  border-radius:8px; display:flex; align-items:center; justify-content:center; font-size:20px; cursor:grab; touch-action:none; }
+.inv-slot.empty{ opacity:0.4; cursor:default; }
+.inv-slot .qty{ position:absolute; bottom:1px; right:3px; font-size:9px; background:rgba(0,0,0,0.65); padding:0 4px; border-radius:4px; color:#fff; }
+.inv-header{ display:flex; align-items:center; justify-content:space-between; gap:10px; font-size:12px; flex-wrap:wrap; }
+.equip-row{ display:flex; gap:10px; justify-content:center; margin:8px 0; flex-wrap:wrap; }
+.equip-slot{ width:56px; height:56px; background:var(--panel2); border:2px dashed var(--border); border-radius:8px;
+  display:flex; align-items:center; justify-content:center; font-size:22px; cursor:pointer; position:relative; touch-action:none; }
+.equip-slot .lbl{ position:absolute; bottom:-16px; font-size:9px; color:var(--muted); white-space:nowrap; }
+.hotbar{ position:absolute; bottom:8px; left:50%; transform:translateX(-50%); display:flex; gap:6px; z-index:8; }
+.hotbar-slot{ width:42px; height:42px; background:rgba(21,24,28,0.85); border:2px solid var(--border); border-radius:8px;
+  display:flex; align-items:center; justify-content:center; font-size:17px; position:relative; color:#fff; cursor:pointer; touch-action:none; }
+.hotbar-slot .key{ position:absolute; top:1px; left:2px; font-size:8px; color:var(--muted); }
+.hotbar-slot .qty{ position:absolute; bottom:0; right:2px; font-size:8px; background:rgba(0,0,0,0.6); border-radius:3px; padding:0 3px; }
+.item-detail{ position:fixed; z-index:60; background:var(--panel); border:1px solid var(--accent); border-radius:8px;
+  padding:10px; width:210px; display:none; box-shadow:0 6px 18px rgba(0,0,0,0.5); }
+.item-detail.show{ display:block; }
+.item-detail h3{ margin:0 0 4px; font-size:14px; }
+.item-detail p{ margin:0 0 8px; font-size:11px; color:var(--muted); }
+.item-detail .actions{ display:flex; gap:6px; flex-wrap:wrap; }
+.drag-ghost{ position:fixed; z-index:100; pointer-events:none; font-size:24px; transform:translate(-50%,-50%); display:none; }
+.recipe{ background:var(--panel2); border-radius:8px; padding:8px; margin-bottom:6px; font-size:12px; text-align:left; }
+.recipe .rtitle{ display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-weight:700; }
+.recipe .req-list{ display:flex; gap:8px; flex-wrap:wrap; margin:4px 0; color:var(--muted); font-size:11px; }
+.req-ok{ color:#39d98a; } .req-bad{ color:var(--danger); }
+.attach-row{ display:flex; align-items:center; justify-content:space-between; background:var(--panel2); border-radius:8px; padding:6px 8px; margin-bottom:6px; font-size:12px; }
 
 #footer{ color:var(--muted); font-size:11px; text-align:center; max-width:960px; }
 </style>
@@ -95,6 +131,8 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
       <div class="stat">❤️<div class="bar bar-hp"><div class="bar-fill" id="hpFill"></div><div class="bar-label" id="hpLabel">100</div></div></div>
       <div class="stat">🛡️<div class="bar bar-armor"><div class="bar-fill" id="armorFill"></div><div class="bar-label" id="armorLabel">0</div></div></div>
       <div class="stat">⚡<div class="bar bar-stamina"><div class="bar-fill" id="stamFill"></div></div></div>
+      <div class="stat">🍖<div class="bar bar-sm bar-hunger"><div class="bar-fill" id="hungerFill"></div></div></div>
+      <div class="stat">💧<div class="bar bar-sm bar-thirst"><div class="bar-fill" id="thirstFill"></div></div></div>
     </div>
     <div class="hud-group">
       <div class="stat">🔫 <b id="ammoText">12/48</b></div>
@@ -106,7 +144,10 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
     <div class="hud-group">
       <div class="stat">🪙 <b id="coinText">0</b></div>
       <div class="stat">Lv <b id="levelText">1</b></div>
+      <div class="stat">🎒 <div class="bar bar-sm bar-weight"><div class="bar-fill" id="weightFill"></div></div></div>
       <div class="stat">
+        <button class="secondary" id="invBtn">Inv (I)</button>
+        <button class="secondary" id="craftBtn">Craft (C)</button>
         <button class="secondary" id="shopBtn">Shop</button>
         <button class="secondary" id="pauseBtn">Pause</button>
       </div>
@@ -119,13 +160,16 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
     <div id="fpsCounter">FPS: 60</div>
 
     <div class="weapon-select" id="weaponSelect"></div>
+    <div class="hotbar" id="hotbarWrap"></div>
 
     <div id="toastWrap"></div>
+    <div class="item-detail" id="itemDetail"></div>
+    <div class="drag-ghost" id="dragGhost"></div>
 
     <!-- Main Menu -->
     <div class="overlay show" id="menuOverlay">
       <h1>🧟 ZOMBIE SURVIVAL PRO</h1>
-      <p>Survive endless waves of the undead. Earn coins &amp; XP, upgrade at the shop between fights,
+      <p>Survive endless waves of the undead. Loot supplies, craft gear at camp, upgrade at the shop,
          and hold the line against the horde — and the boss that comes for you every 10 waves.</p>
       <div class="panel-box" style="text-align:left;">
         <div class="row"><span>Move</span><b>WASD / Arrows</b></div>
@@ -133,6 +177,10 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
         <div class="row"><span>Sprint / Crouch</span><b>Shift / Ctrl</b></div>
         <div class="row"><span>Reload</span><b>R</b></div>
         <div class="row"><span>Switch Weapon</span><b>1-5</b></div>
+        <div class="row"><span>Inventory / Craft</span><b>I / C</b></div>
+        <div class="row"><span>Flashlight</span><b>L</b></div>
+        <div class="row"><span>Throw Molotov / Place Trap</span><b>Q / F</b></div>
+        <div class="row"><span>Hotbar</span><b>6-9</b></div>
         <div class="row"><span>Shop / Pause</span><b>B / P</b></div>
       </div>
       <div style="display:flex; gap:10px;">
@@ -175,6 +223,32 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
       <button id="closeShopBtn">Close</button>
     </div>
 
+    <!-- Inventory -->
+    <div class="overlay" id="invOverlay">
+      <h1>🎒 Inventory</h1>
+      <div class="panel-box" style="max-width:640px;">
+        <div class="inv-header">
+          <span>Weight: <b id="invWeightText">0 / 40</b></span>
+          <span style="color:var(--muted);">Click an item for details · drag to reorder, hotbar, or equip</span>
+        </div>
+        <div class="equip-row" id="equipRow"></div>
+        <div class="inv-grid" id="invGrid"></div>
+      </div>
+      <button id="closeInvBtn">Close</button>
+    </div>
+
+    <!-- Crafting -->
+    <div class="overlay" id="craftOverlay">
+      <h1>🛠️ Crafting</h1>
+      <div class="panel-box" style="max-width:640px;" id="craftPanelBox">
+        <div id="recipeList"></div>
+        <h3 style="margin:10px 0 4px; font-size:14px; color:var(--accent);">Weapon Attachments</h3>
+        <p style="font-size:11px; color:var(--muted); margin:0 0 6px;">Installs onto your currently equipped weapon (<span id="attachWeaponName">Pistol</span>).</p>
+        <div id="attachList"></div>
+      </div>
+      <button id="closeCraftBtn">Close</button>
+    </div>
+
     <!-- Game Over -->
     <div class="overlay" id="gameOverOverlay">
       <h1 style="color:var(--danger)">GAME OVER</h1>
@@ -188,7 +262,7 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
     </div>
   </div>
 
-  <div id="footer">WASD move &middot; mouse aim/shoot &middot; Shift sprint &middot; Ctrl crouch &middot; R reload &middot; 1-5 weapons &middot; B shop &middot; P pause</div>
+  <div id="footer">WASD move &middot; mouse aim/shoot &middot; Shift sprint &middot; Ctrl crouch &middot; R reload &middot; 1-5 weapons &middot; I inventory &middot; C craft &middot; L flashlight &middot; Q molotov &middot; F trap &middot; B shop &middot; P pause</div>
 </div>
 
 <script>
@@ -202,19 +276,20 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
      3. Sound engine (fully procedural WebAudio — no external files)
      4. Music engine (layered, intensity-driven, smooth crossfades)
      5. Input (keyboard, mouse, touch)
-     6. Player (stats, movement, sprint/crouch)
-     7. Weapons (shooting, reload, recoil)
+     6. Player (stats, movement, sprint/crouch, survival stats)
+     7. Weapons (shooting, reload, recoil, attachments, noise)
      8. Zombies (types, AI state machine, spawning)
-     9. Projectiles (player bullets + zombie spit)
-    10. Pickups & loot (ammo/health/armor/coins, rarity)
-    11. Destructible crates
-    12. Visual FX (particles, decals, camera shake, hit markers, dmg numbers)
-    13. Environment (day/night, weather, fog, flicker light, minimap)
-    14. Progression (XP/level, coins, shop)
-    15. ToNews/toast + achievements
-    16. Update loop / render loop
-    17. UI sync
-    18. Game lifecycle (menu, start, pause, shop, restart, game over)
+     9. Projectiles (player bullets + zombie spit) + molotovs + traps
+    10. Item database, Inventory, Equipment, Hotbar, Crafting (NEW)
+    11. Loot & pickups (item-based, rarity-weighted)
+    12. Destructible crates
+    13. Visual FX (particles, decals, camera shake, hit markers, dmg numbers)
+    14. Environment (day/night, weather, fog, flashlight, minimap)
+    15. Progression (XP/level, coins, shop)
+    16. Toasts
+    17. Update loop / render loop
+    18. UI sync
+    19. Game lifecycle (menu, start, pause, shop, restart, game over)
    ========================================================================= */
 
 // ---------------------------------------------------------------------
@@ -229,13 +304,16 @@ const ctx = canvas.getContext("2d", { alpha:false });
 const $ = (id) => document.getElementById(id);
 const ui = {
   hpFill:$("hpFill"), hpLabel:$("hpLabel"), armorFill:$("armorFill"), armorLabel:$("armorLabel"),
-  stamFill:$("stamFill"), ammoText:$("ammoText"), reloadWrap:$("reloadWrap"), reloadFill:$("reloadFill"),
+  stamFill:$("stamFill"), hungerFill:$("hungerFill"), thirstFill:$("thirstFill"), weightFill:$("weightFill"),
+  ammoText:$("ammoText"), reloadWrap:$("reloadWrap"), reloadFill:$("reloadFill"),
   waveText:$("waveText"), zombieText:$("zombieText"), bossText:$("bossText"), coinText:$("coinText"),
   levelText:$("levelText"), fps:$("fpsCounter"), hurtFlash:$("hurtFlash"), weaponSelect:$("weaponSelect"),
-  toastWrap:$("toastWrap"),
+  hotbarWrap:$("hotbarWrap"), toastWrap:$("toastWrap"), itemDetail:$("itemDetail"), dragGhost:$("dragGhost"),
   menuOverlay:$("menuOverlay"), pauseOverlay:$("pauseOverlay"), settingsOverlay:$("settingsOverlay"),
   shopOverlay:$("shopOverlay"), gameOverOverlay:$("gameOverOverlay"), gameOverStats:$("gameOverStats"),
   shopCoins:$("shopCoins"), shopList:$("shopList"),
+  invOverlay:$("invOverlay"), invGrid:$("invGrid"), equipRow:$("equipRow"), invWeightText:$("invWeightText"),
+  craftOverlay:$("craftOverlay"), recipeList:$("recipeList"), attachList:$("attachList"), attachWeaponName:$("attachWeaponName"),
 };
 
 function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
@@ -245,7 +323,7 @@ function dist2(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
 // ---------------------------------------------------------------------
 // 2. GAME STATE / ENTITY STORES
 // ---------------------------------------------------------------------
-const MODE = { MENU:"menu", PLAYING:"playing", PAUSED:"paused", SHOP:"shop", GAMEOVER:"gameover" };
+const MODE = { MENU:"menu", PLAYING:"playing", PAUSED:"paused", SHOP:"shop", INVENTORY:"inventory", CRAFTING:"crafting", GAMEOVER:"gameover" };
 
 const game = {
   mode: MODE.MENU,
@@ -264,6 +342,8 @@ let enemyShots = [];
 let zombies = [];
 let pickups = [];
 let crates = [];
+let molotovs = [];
+let traps = [];
 let decalsQueue = []; // {x,y,r,alpha}
 let hitMarkers = [];
 let damageNumbers = [];
@@ -397,6 +477,7 @@ const Sound = (() => {
     victory(){ [523,659,784,1046].forEach((f,i)=>tone({freq:f,type:"triangle",duration:0.3,gain:0.3,delay:i*0.12})); },
     thunder(){ noise({duration:0.9, gain:0.5, filterFreq:200, filterType:"lowpass", delay:0.15}); },
     footstep(){ noise({duration:0.05, gain:0.06, filterFreq:500, filterType:"lowpass"}); },
+    craft(){ tone({freq:400,type:"triangle",duration:0.08,gain:0.2}); tone({freq:600,type:"triangle",duration:0.1,gain:0.2,delay:0.09}); },
   };
 })();
 
@@ -472,9 +553,15 @@ window.addEventListener("keydown", (e) => {
     const order = ["pistol","shotgun","rifle","smg","sniper"];
     changeWeapon(order[+e.key-1]);
   }
+  if(["6","7","8","9"].includes(e.key)) useHotbar(+e.key-6);
   if(e.key.toLowerCase()==="r") startReload();
   if(e.key.toLowerCase()==="p") togglePause();
   if(e.key.toLowerCase()==="b") toggleShop();
+  if(e.key.toLowerCase()==="i") toggleInventory();
+  if(e.key.toLowerCase()==="c") toggleCraft();
+  if(e.key.toLowerCase()==="l") toggleFlashlight();
+  if(e.key.toLowerCase()==="q") useFirstItemOfType("throwable");
+  if(e.key.toLowerCase()==="f") useFirstItemOfType("placeable");
   if(e.key === "Escape") closeAnyOverlay();
 });
 window.addEventListener("keyup", (e) => { keys[e.key.toLowerCase()] = false; });
@@ -483,8 +570,6 @@ canvas.addEventListener("mousemove", (e) => { const p = toWorldCoords(e.clientX,
 canvas.addEventListener("mousedown", () => { mouse.down = true; Sound.unlock(); tryShoot(); });
 window.addEventListener("mouseup", () => { mouse.down = false; });
 canvas.addEventListener("contextmenu", (e) => e.preventDefault());
-
-document.querySelectorAll(".weapon-select button").forEach(() => {}); // (buttons built dynamically, see buildWeaponSelect)
 
 // Touch joystick + fire zone
 const joystickZone = $("joystickZone"), joystickBase = $("joystickBase"), joystickStick = $("joystickStick"), fireZone = $("fireZone");
@@ -520,14 +605,18 @@ fireZone.addEventListener("touchmove", (e)=>{
 // 6. PLAYER
 // ---------------------------------------------------------------------
 const player = {
-  x:WORLD_W/2, y:WORLD_H/2, baseSpeed:230, hp:100, maxHp:100, armor:0, maxArmor:100,
+  x:WORLD_W/2, y:WORLD_H/2, baseSpeed:230, hp:100, maxHp:100,
+  baseMaxArmor:100, armorBonus:0, armor:0, maxArmor:100,
   stamina:100, maxStamina:100, sprinting:false, crouching:false, coins:0, xp:0, level:1, xpToNext:100,
+  hunger:100, maxHunger:100, thirst:100, maxThirst:100,
+  flashlightOn:false, flashlightCharge:100,
   footstepTimer:0,
 };
 
 function xpForNext(level){ return 90 + level*45; }
 
 function gainXp(amount){
+  if(hasLegendaryCharm()) amount *= 1.15;
   player.xp += amount;
   while(player.xp >= player.xpToNext){
     player.xp -= player.xpToNext;
@@ -540,7 +629,7 @@ function gainXp(amount){
   }
 }
 
-function damagePlayer(amount, {isAttack=true} = {}){
+function damagePlayer(amount, {isAttack=true, suppressFx=false} = {}){
   if(game.mode !== MODE.PLAYING) return;
   let remaining = amount;
   if(player.armor > 0){
@@ -549,8 +638,7 @@ function damagePlayer(amount, {isAttack=true} = {}){
     remaining -= absorbed;
   }
   player.hp -= remaining;
-  triggerHurtFlash();
-  shakeCamera(4, 0.15);
+  if(!suppressFx){ triggerHurtFlash(); shakeCamera(4, 0.15); }
   if(isAttack) Sound.hurt();
   if(player.hp <= 0){ player.hp = 0; triggerGameOver(); }
 }
@@ -562,6 +650,24 @@ function triggerHurtFlash(){
     ui.hurtFlash.style.transition = "opacity .4s ease";
     ui.hurtFlash.style.opacity = "0";
   });
+}
+
+function recomputeMaxArmor(){
+  player.maxArmor = player.baseMaxArmor + player.armorBonus;
+  player.armor = Math.min(player.armor, player.maxArmor);
+}
+
+function updateSurvivalStats(dt){
+  player.hunger = Math.max(0, player.hunger - 0.12*dt);
+  player.thirst = Math.max(0, player.thirst - 0.16*dt);
+  if(player.hunger<=0 || player.thirst<=0){ damagePlayer(2*dt, {isAttack:false, suppressFx:true}); }
+}
+
+function updateFlashlight(dt){
+  if(equipment.flashlight && player.flashlightOn){
+    player.flashlightCharge -= 6*dt;
+    if(player.flashlightCharge<=0){ player.flashlightCharge=0; player.flashlightOn=false; pushToast("🔦 Flashlight died"); }
+  }
 }
 
 function movePlayer(dt){
@@ -641,13 +747,14 @@ function damageCrate(c, dmg){
 // 7. WEAPONS
 // ---------------------------------------------------------------------
 const WEAPON_ORDER = ["pistol","shotgun","rifle","smg","sniper"];
-const weapons = {
-  pistol:  {name:"Pistol",        damage:25, mag:12, reserve:60,  fireRate:250, bulletSpeed:640, spread:0.03, recoil:2,  reloadTime:850,  unlocked:true,  upgrade:0},
-  shotgun: {name:"Shotgun",       damage:14, pellets:6, mag:6, reserve:30, fireRate:650, bulletSpeed:560, spread:0.5, recoil:7, reloadTime:1500, unlocked:false, upgrade:0, cost:150},
-  rifle:   {name:"Assault Rifle", damage:16, mag:30, reserve:150, fireRate:110, bulletSpeed:700, spread:0.07, recoil:3,  reloadTime:1600, unlocked:false, upgrade:0, cost:220},
-  smg:     {name:"SMG",           damage:10, mag:35, reserve:175, fireRate:65,  bulletSpeed:650, spread:0.1,  recoil:2.5,reloadTime:1300, unlocked:false, upgrade:0, cost:200},
-  sniper:  {name:"Sniper",        damage:110,mag:5,  reserve:25,  fireRate:900, bulletSpeed:1500,spread:0.006,recoil:11, reloadTime:2000, unlocked:false, upgrade:0, cost:300},
+let weapons = {
+  pistol:  {name:"Pistol",        damage:25, mag:12, reserve:60,  fireRate:250, bulletSpeed:640, spread:0.03, recoil:2,  reloadTime:850,  unlocked:true,  upgrade:0, installed:{scope:false,suppressor:false,extmag:false}},
+  shotgun: {name:"Shotgun",       damage:14, pellets:6, mag:6, reserve:30, fireRate:650, bulletSpeed:560, spread:0.5, recoil:7, reloadTime:1500, unlocked:false, upgrade:0, cost:150, installed:{scope:false,suppressor:false,extmag:false}},
+  rifle:   {name:"Assault Rifle", damage:16, mag:30, reserve:150, fireRate:110, bulletSpeed:700, spread:0.07, recoil:3,  reloadTime:1600, unlocked:false, upgrade:0, cost:220, installed:{scope:false,suppressor:false,extmag:false}},
+  smg:     {name:"SMG",           damage:10, mag:35, reserve:175, fireRate:65,  bulletSpeed:650, spread:0.1,  recoil:2.5,reloadTime:1300, unlocked:false, upgrade:0, cost:200, installed:{scope:false,suppressor:false,extmag:false}},
+  sniper:  {name:"Sniper",        damage:110,mag:5,  reserve:25,  fireRate:900, bulletSpeed:1500,spread:0.006,recoil:11, reloadTime:2000, unlocked:false, upgrade:0, cost:300, installed:{scope:false,suppressor:false,extmag:false}},
 };
+const WEAPON_BASE = JSON.parse(JSON.stringify(weapons));
 let currentAmmo = { pistol: weapons.pistol.mag };
 let currentWeaponKey = "pistol";
 let lastShotTime = 0;
@@ -675,6 +782,7 @@ function changeWeapon(key){
   if(currentAmmo[key] === undefined) currentAmmo[key] = w.mag;
   reloading = false;
   buildWeaponSelect();
+  if(game.mode===MODE.CRAFTING) renderCrafting();
 }
 
 function currentWeapon(){ return weapons[currentWeaponKey]; }
@@ -698,6 +806,16 @@ function finishReload(){
   reloading = false;
 }
 
+// Gunfire noise wakes nearby patrolling/searching zombies. Suppressors
+// shrink this radius dramatically — a real tradeoff for installing one.
+function noiseWake(x,y,radius){
+  for(const z of zombies){
+    if((z.state==="patrol"||z.state==="search") && dist2(z.x,z.y,x,y) < radius){
+      z.state = "chase"; z.lastSeen = performance.now(); z.lastKnown = {x,y};
+    }
+  }
+}
+
 function tryShoot(){
   if(game.mode !== MODE.PLAYING) return;
   const w = currentWeapon();
@@ -711,6 +829,7 @@ function tryShoot(){
   Sound.shot(currentWeaponKey);
   shakeCamera(w.recoil*0.6, 0.08);
   heat = Math.min(1, heat + 0.18);
+  noiseWake(player.x, player.y, w.installed.suppressor ? 120 : 420);
 
   const baseAngle = Math.atan2(mouse.y-player.y, mouse.x-player.x);
   const totalSpread = w.spread + heat*0.15;
@@ -865,8 +984,30 @@ function updateZombies(dt){
   for(const z of zombies) updateZombieAI(z, dt);
 }
 
+// Shared damage/kill handling so bullets, molotovs and traps all behave consistently.
+function damageZombie(z, dmg){
+  z.hp -= dmg;
+  spawnParticles(z.x,z.y,5,"#c0392b",200,0.35);
+  pushDamageNumber(z.x, z.y-10, Math.round(dmg));
+  pushHitMarker(z.x,z.y);
+  if(z.state==="patrol"||z.state==="search"){ z.state="chase"; z.lastSeen=performance.now(); }
+  if(z.hp <= 0) killZombie(z);
+}
+function killZombie(z){
+  const idx = zombies.indexOf(z);
+  if(idx<0) return;
+  Sound.zombieDeath();
+  if(z.type==="boss"){ game.bossAlive=false; ui.bossText.textContent="-"; game.score+=500; }
+  else game.score += 10;
+  player.coins += z.coin; gainXp(z.xp);
+  spawnParticles(z.x,z.y,16,z.color,300,0.5);
+  queueDecal(z.x, z.y+10, z.size*0.8);
+  dropLoot(z.x, z.y);
+  zombies.splice(idx,1);
+}
+
 // ---------------------------------------------------------------------
-// 9. PROJECTILES (player bullets + enemy spit)
+// 9. PROJECTILES (player bullets + enemy spit) + MOLOTOVS + TRAPS
 // ---------------------------------------------------------------------
 function updateBullets(dt){
   for(let i=bullets.length-1;i>=0;i--){
@@ -881,26 +1022,9 @@ function updateBullets(dt){
     }
     if(consumed){ bullets.splice(i,1); continue; }
 
-    for(let j=zombies.length-1;j>=0;j--){
-      const z = zombies[j];
+    for(const z of zombies){
       if(dist2(b.x,b.y,z.x,z.y) < z.size/2){
-        z.hp -= b.damage;
-        spawnParticles(b.x,b.y,5,"#c0392b",200,0.35);
-        pushDamageNumber(b.x, b.y-10, Math.round(b.damage));
-        pushHitMarker(b.x,b.y);
-        if(z.type!=="boss") z.state = z.state==="patrol" ? "chase" : z.state;
-        if(z.state==="patrol"||z.state==="search"){ z.state="chase"; z.lastSeen=performance.now(); }
-
-        if(z.hp <= 0){
-          Sound.zombieDeath();
-          if(z.type==="boss"){ game.bossAlive=false; ui.bossText.textContent="-"; game.score+=500; }
-          else game.score += 10;
-          player.coins += z.coin; gainXp(z.xp);
-          spawnParticles(z.x,z.y,16,z.color,300,0.5);
-          queueDecal(z.x, z.y+10, z.size*0.8);
-          dropLoot(z.x, z.y);
-          zombies.splice(j,1);
-        }
+        damageZombie(z, b.damage);
         consumed = true;
         break;
       }
@@ -920,8 +1044,60 @@ function updateBullets(dt){
   }
 }
 
+function throwMolotov(){
+  const a = Math.atan2(mouse.y-player.y, mouse.x-player.x);
+  const dist = 220;
+  const x = clamp(player.x+Math.cos(a)*dist,20,WORLD_W-20);
+  const y = clamp(player.y+Math.sin(a)*dist,20,WORLD_H-20);
+  molotovs.push({x,y,timer:4,radius:70,tick:0});
+  Sound.explosion(); shakeCamera(8,0.25);
+  spawnParticles(x,y,20,"#ff8800",220,0.6);
+  pushToast("🔥 Molotov thrown!");
+}
+function updateMolotovs(dt){
+  for(let i=molotovs.length-1;i>=0;i--){
+    const m=molotovs[i]; m.timer-=dt; m.tick-=dt;
+    if(m.tick<=0){
+      m.tick=0.5;
+      for(const z of [...zombies]){ if(dist2(z.x,z.y,m.x,m.y)<m.radius) damageZombie(z, 18); }
+      spawnParticles(m.x+rand(-20,20), m.y+rand(-20,20), 3, "#ff5500", 60, 0.4);
+    }
+    if(m.timer<=0) molotovs.splice(i,1);
+  }
+}
+function drawMolotovs(){
+  for(const m of molotovs){
+    const grad = ctx.createRadialGradient(m.x,m.y,4,m.x,m.y,m.radius);
+    grad.addColorStop(0,"rgba(255,140,0,0.55)"); grad.addColorStop(1,"rgba(255,60,0,0)");
+    ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(m.x,m.y,m.radius,0,Math.PI*2); ctx.fill();
+  }
+}
+
+function placeTrap(){
+  traps.push({x:player.x,y:player.y,armed:true,radius:26});
+  pushToast("🪤 Trap placed");
+}
+function updateTraps(){
+  for(const t of traps){
+    if(!t.armed) continue;
+    for(const z of zombies){
+      if(dist2(z.x,z.y,t.x,t.y) < t.radius){
+        damageZombie(z, 90);
+        t.armed = false;
+        spawnParticles(t.x,t.y,10,"#999",150,0.3);
+        break;
+      }
+    }
+  }
+  traps = traps.filter(t=>t.armed);
+}
+function drawTraps(){
+  ctx.fillStyle="#8a8f96"; ctx.strokeStyle="#e8ecef"; ctx.lineWidth=1.5;
+  for(const t of traps){ ctx.beginPath(); ctx.arc(t.x,t.y,8,0,Math.PI*2); ctx.fill(); ctx.stroke(); }
+}
+
 // ---------------------------------------------------------------------
-// 10. PICKUPS & LOOT (ammo / health / armor / coins, rarity tiers)
+// 10. ITEM DATABASE, INVENTORY, EQUIPMENT, HOTBAR, CRAFTING  (NEW)
 // ---------------------------------------------------------------------
 const RARITY = {
   common:   { color:"#b0b8c0", mult:1,   chance:0.62 },
@@ -930,11 +1106,6 @@ const RARITY = {
   legendary:{ color:"#ff9f1c", mult:6,   chance:0.03 },
 };
 function rollRarity(){
-  const r = Math.random(); let acc=0;
-  for(const key of ["legendary","epic","rare","common"]){
-    acc += RARITY[key].chance;
-  }
-  // roll from rarest to most common using cumulative thresholds
   const roll = Math.random();
   if(roll < RARITY.legendary.chance) return "legendary";
   if(roll < RARITY.legendary.chance+RARITY.epic.chance) return "epic";
@@ -942,47 +1113,432 @@ function rollRarity(){
   return "common";
 }
 
-function dropLoot(x, y, guaranteed=false){
-  if(!guaranteed && Math.random() > 0.4) return;
+const ITEMS = {
+  bandage:       {name:"Bandage",        type:"consumable", rarity:"common",    stack:5,  weight:0.4, icon:"🩹", desc:"A quick patch. Restores 20 HP.", heal:20},
+  medkit:        {name:"Medkit",         type:"consumable", rarity:"rare",      stack:3,  weight:1.2, icon:"⚕️", desc:"Proper first aid. Restores 55 HP.", heal:55},
+  food_can:      {name:"Canned Food",    type:"consumable", rarity:"common",    stack:5,  weight:0.6, icon:"🥫", desc:"Restores 25 hunger and a little HP.", hunger:25, heal:5},
+  water_bottle:  {name:"Water Bottle",   type:"consumable", rarity:"common",    stack:5,  weight:0.5, icon:"💧", desc:"Restores 30 thirst.", thirst:30},
+  cooked_meal:   {name:"Cooked Meal",    type:"consumable", rarity:"rare",      stack:3,  weight:0.8, icon:"🍲", desc:"A hearty meal. Restores hunger, thirst and 15 HP.", hunger:40, thirst:30, heal:15},
+  battery:       {name:"Battery",        type:"material",   rarity:"rare",      stack:10, weight:0.2, icon:"🔋", desc:"Recharges an equipped flashlight, or used in crafting."},
+  scrap_metal:   {name:"Scrap Metal",    type:"material",   rarity:"common",    stack:20, weight:0.3, icon:"🔩", desc:"Salvaged metal. Useful for crafting."},
+  cloth:         {name:"Cloth",          type:"material",   rarity:"common",    stack:20, weight:0.1, icon:"🧵", desc:"Torn fabric. Good for bandages and armor."},
+  chemicals:     {name:"Chemicals",      type:"material",   rarity:"rare",      stack:10, weight:0.4, icon:"🧪", desc:"Volatile compound used in medicine and molotovs."},
+  wood:          {name:"Wood Plank",     type:"material",   rarity:"common",    stack:20, weight:0.5, icon:"🪵", desc:"Sturdy wood. Useful for traps."},
+  gunpowder:     {name:"Gunpowder",      type:"material",   rarity:"rare",      stack:10, weight:0.2, icon:"💥", desc:"Explosive powder for ammo crafting."},
+  fuel_can:      {name:"Fuel Can",       type:"material",   rarity:"rare",      stack:5,  weight:1.5, icon:"⛽", desc:"Flammable fuel. Key molotov ingredient."},
+  flashlight:    {name:"Flashlight",     type:"equipment",  slot:"flashlight", rarity:"epic", stack:1, weight:0.5, icon:"🔦", desc:"Equip to light up the dark. Drains charge; refill with batteries."},
+  armor_vest:    {name:"Armor Vest",     type:"equipment",  slot:"armor",      rarity:"epic", stack:1, weight:3,   icon:"🦺", desc:"Equip for +30 max armor.", armorBonus:30},
+  scope_attachment:      {name:"Scope",          type:"attachment", attach:"scope",      rarity:"epic", stack:5, weight:0.3, icon:"🔭", desc:"Install on current weapon: -40% spread."},
+  suppressor_attachment: {name:"Suppressor",     type:"attachment", attach:"suppressor", rarity:"epic", stack:5, weight:0.3, icon:"🔇", desc:"Install: dramatically reduces gunfire noise radius."},
+  extended_mag_attachment:{name:"Extended Mag",  type:"attachment", attach:"extmag",     rarity:"epic", stack:5, weight:0.4, icon:"📦", desc:"Install: +50% magazine size."},
+  ammo_pack:     {name:"Ammo Pack",      type:"consumable", rarity:"common", stack:5, weight:0.6, icon:"🧰", desc:"Refills reserve ammo for your current weapon.", ammo:true},
+  molotov:       {name:"Molotov Cocktail", type:"throwable", rarity:"rare", stack:5, weight:0.8, icon:"🔥", desc:"Throw at the horde. Creates a burning zone that ticks damage."},
+  trap_kit:      {name:"Spike Trap",     type:"placeable", rarity:"rare", stack:5, weight:1, icon:"🪤", desc:"Place on the ground. Heavily damages the first zombie that steps on it."},
+  armor_plate:   {name:"Armor Plate",    type:"consumable", rarity:"rare", stack:5, weight:1, icon:"🛡️", desc:"Use to permanently +10 max armor.", maxArmorBoost:10},
+  legendary_amulet:{name:"Survivor's Charm", type:"trinket", rarity:"legendary", stack:1, weight:0.1, icon:"🧿", desc:"A lucky charm. Just carrying it grants +15% XP gain."},
+};
+
+const LOOT_POOLS = {
+  common:   ["bandage","food_can","water_bottle","scrap_metal","cloth","wood","ammo_pack"],
+  rare:     ["medkit","battery","chemicals","gunpowder","fuel_can","molotov","trap_kit","armor_plate","cooked_meal"],
+  epic:     ["armor_vest","flashlight","scope_attachment","suppressor_attachment","extended_mag_attachment"],
+  legendary:["legendary_amulet"],
+};
+function rollLootItem(){
   const rarity = rollRarity();
-  const kinds = ["coin","ammo","health","armor"];
-  const kind = kinds[Math.floor(Math.random()*kinds.length)];
-  pickups.push({ x, y, kind, rarity, bornAt:performance.now() });
-  if(rarity==="legendary") pushToast("✨ Legendary drop!");
+  const pool = LOOT_POOLS[rarity];
+  const id = pool[Math.floor(Math.random()*pool.length)];
+  return {id, rarity};
 }
 
+const INV_SIZE = 24;
+const MAX_WEIGHT = 40;
+let inventory = new Array(INV_SIZE).fill(null);
+let hotbar = [null,null,null,null];
+let equipment = { armor:null, flashlight:null };
+
+function inventoryWeight(){
+  let w = 0;
+  for(const s of inventory) if(s) w += ITEMS[s.id].weight * s.qty;
+  for(const k in equipment) if(equipment[k]) w += ITEMS[equipment[k].id].weight;
+  return w;
+}
+function hasLegendaryCharm(){ return inventory.some(s => s && s.id==="legendary_amulet"); }
+function countItem(id){ let c=0; for(const s of inventory) if(s && s.id===id) c+=s.qty; return c; }
+
+function addItemToInventory(id, qty=1){
+  const def = ITEMS[id]; if(!def) return qty;
+  let remaining = qty;
+  let curWeight = inventoryWeight();
+  if(def.stack>1){
+    for(const s of inventory){
+      if(remaining<=0) break;
+      if(s && s.id===id && s.qty<def.stack){
+        if(curWeight+def.weight>MAX_WEIGHT) break;
+        const room = def.stack-s.qty;
+        const take = Math.min(room, remaining);
+        s.qty += take; remaining -= take; curWeight += def.weight*take;
+      }
+    }
+  }
+  for(let i=0;i<inventory.length && remaining>0;i++){
+    if(!inventory[i]){
+      if(curWeight+def.weight>MAX_WEIGHT) break;
+      const take = Math.min(def.stack, remaining);
+      inventory[i] = {id, qty:take};
+      remaining -= take; curWeight += def.weight*take;
+    }
+  }
+  return remaining;
+}
+function removeFromSlot(idx, qty=1){
+  const s = inventory[idx]; if(!s) return;
+  s.qty -= qty;
+  if(s.qty<=0) inventory[idx] = null;
+}
+function consumeItem(id, qty){
+  let need = qty;
+  for(let i=0;i<inventory.length && need>0;i++){
+    const s = inventory[i];
+    if(s && s.id===id){
+      const take = Math.min(s.qty, need);
+      s.qty -= take; need -= take;
+      if(s.qty<=0) inventory[i] = null;
+    }
+  }
+  return need<=0;
+}
+
+function applyConsumable(def){
+  if(def.heal) { player.hp = Math.min(player.maxHp, player.hp+def.heal); Sound.heal(); }
+  if(def.hunger) player.hunger = Math.min(player.maxHunger, player.hunger+def.hunger);
+  if(def.thirst) player.thirst = Math.min(player.maxThirst, player.thirst+def.thirst);
+  if(def.ammo){ const w=currentWeapon(); w.reserve += Math.round(w.mag*1.5); Sound.coin(); }
+  if(def.maxArmorBoost){ player.baseMaxArmor += def.maxArmorBoost; recomputeMaxArmor(); }
+}
+
+function useInventorySlot(idx){
+  const s = inventory[idx]; if(!s) return;
+  const def = ITEMS[s.id];
+  if(s.id==="battery"){
+    if(equipment.flashlight){
+      player.flashlightCharge = Math.min(100, player.flashlightCharge+50);
+      removeFromSlot(idx,1);
+      pushToast("🔋 Flashlight recharged");
+    } else pushToast("Equip a flashlight first");
+  } else if(def.type==="consumable"){
+    applyConsumable(def);
+    removeFromSlot(idx,1);
+    pushToast(`Used ${def.name}`);
+  } else if(def.type==="throwable"){
+    throwMolotov();
+    removeFromSlot(idx,1);
+  } else if(def.type==="placeable"){
+    placeTrap();
+    removeFromSlot(idx,1);
+  } else if(def.type==="equipment"){
+    equipItem(idx);
+  }
+  renderInventory(); renderHotbar();
+}
+
+function useFirstItemOfType(type){
+  const idx = inventory.findIndex(s => s && ITEMS[s.id].type===type);
+  if(idx<0){ pushToast("None available"); return; }
+  useInventorySlot(idx);
+}
+
+function useHotbar(i){
+  const id = hotbar[i];
+  if(!id){ return; }
+  if(countItem(id)<=0){ pushToast("None left"); return; }
+  const idx = inventory.findIndex(s => s && s.id===id);
+  if(idx>=0) useInventorySlot(idx);
+}
+
+function equipItem(idx){
+  const s = inventory[idx]; if(!s) return;
+  const def = ITEMS[s.id];
+  const slot = def.slot; if(!slot) return;
+  if(equipment[slot]) addItemToInventory(equipment[slot].id, 1);
+  equipment[slot] = {id:s.id};
+  removeFromSlot(idx,1);
+  pushToast(`Equipped ${def.name}`);
+  applyEquipmentEffects();
+  renderEquipment(); renderInventory();
+}
+function unequipSlot(slot){
+  if(!equipment[slot]) return;
+  const leftover = addItemToInventory(equipment[slot].id, 1);
+  if(leftover>0){ pushToast("Inventory full — can't unequip"); return; }
+  equipment[slot] = null;
+  if(slot==="flashlight") player.flashlightOn = false;
+  applyEquipmentEffects();
+  renderEquipment(); renderInventory();
+}
+function applyEquipmentEffects(){
+  const armorDef = equipment.armor ? ITEMS[equipment.armor.id] : null;
+  player.armorBonus = armorDef ? (armorDef.armorBonus||0) : 0;
+  recomputeMaxArmor();
+}
+function toggleFlashlight(){
+  if(!equipment.flashlight){ pushToast("No flashlight equipped"); return; }
+  if(player.flashlightCharge<=0){ pushToast("Flashlight needs a battery"); return; }
+  player.flashlightOn = !player.flashlightOn;
+}
+
+function installAttachment(idx){
+  const s = inventory[idx]; if(!s) return;
+  const def = ITEMS[s.id];
+  const key = currentWeaponKey;
+  const w = weapons[key];
+  if(w.installed[def.attach]){ pushToast(`${w.name} already has that.`); return; }
+  if(def.attach==="scope") w.spread *= 0.6;
+  if(def.attach==="extmag"){ const oldMag=w.mag; w.mag = Math.round(w.mag*1.5); if(currentAmmo[key]!==undefined) currentAmmo[key] += (w.mag-oldMag); }
+  w.installed[def.attach] = true;
+  removeFromSlot(idx,1);
+  Sound.craft();
+  pushToast(`Installed ${def.name} on ${w.name}`);
+  renderInventory(); renderCrafting();
+}
+
+// ---- Crafting recipes ----
+const RECIPES = [
+  {id:"bandage",     name:"Bandage",        result:"bandage",     qty:1, req:[{id:"cloth",qty:2}]},
+  {id:"medkit",      name:"Medkit",         result:"medkit",      qty:1, req:[{id:"cloth",qty:2},{id:"chemicals",qty:1}]},
+  {id:"ammo_pack",   name:"Ammo Pack",      result:"ammo_pack",   qty:1, req:[{id:"scrap_metal",qty:3},{id:"gunpowder",qty:1}]},
+  {id:"molotov",     name:"Molotov Cocktail",result:"molotov",    qty:1, req:[{id:"fuel_can",qty:1},{id:"cloth",qty:1}]},
+  {id:"trap_kit",    name:"Spike Trap",     result:"trap_kit",    qty:1, req:[{id:"scrap_metal",qty:3},{id:"wood",qty:1}]},
+  {id:"armor_plate", name:"Armor Plate",    result:"armor_plate", qty:1, req:[{id:"scrap_metal",qty:4},{id:"cloth",qty:2}]},
+  {id:"cooked_meal", name:"Cooked Meal",    result:"cooked_meal", qty:1, req:[{id:"food_can",qty:1},{id:"water_bottle",qty:1}]},
+];
+function canCraft(r){ return r.req.every(x => countItem(x.id)>=x.qty); }
+function craft(r){
+  if(!canCraft(r)) return;
+  r.req.forEach(x => consumeItem(x.id, x.qty));
+  const leftover = addItemToInventory(r.result, r.qty);
+  if(leftover>0) pushToast("🎒 Inventory full — crafted item lost!");
+  else pushToast(`🛠️ Crafted ${r.name}`);
+  Sound.craft();
+  renderCrafting(); renderInventory();
+}
+
+// ---- Rendering: inventory / equipment / hotbar / crafting / tooltips ----
+function renderInventory(){
+  ui.invWeightText.textContent = `${inventoryWeight().toFixed(1)} / ${MAX_WEIGHT}`;
+  ui.invGrid.innerHTML = "";
+  inventory.forEach((s, idx) => {
+    const el = document.createElement("div");
+    el.className = "inv-slot" + (s ? "" : " empty");
+    el.dataset.slot = "1"; el.dataset.source = "inv"; el.dataset.index = idx;
+    if(s){
+      const def = ITEMS[s.id];
+      el.style.borderColor = RARITY[def.rarity].color;
+      el.innerHTML = `${def.icon}${s.qty>1?`<span class="qty">${s.qty}</span>`:""}`;
+      el.addEventListener("pointerdown", (e) => startDrag(e, "inv", idx));
+    }
+    ui.invGrid.appendChild(el);
+  });
+}
+function renderEquipment(){
+  ui.equipRow.innerHTML = "";
+  [["armor","🦺 Armor"],["flashlight","🔦 Light"]].forEach(([slot,label]) => {
+    const el = document.createElement("div");
+    el.className = "equip-slot";
+    el.dataset.slot = "1"; el.dataset.source = "equip"; el.dataset.equip = slot;
+    const item = equipment[slot];
+    el.innerHTML = (item ? ITEMS[item.id].icon : "➕") + `<span class="lbl">${label}</span>`;
+    el.addEventListener("click", () => { if(item) unequipSlot(slot); });
+    ui.equipRow.appendChild(el);
+  });
+}
+function renderHotbar(){
+  ui.hotbarWrap.innerHTML = "";
+  hotbar.forEach((id, i) => {
+    const el = document.createElement("div");
+    el.className = "hotbar-slot";
+    el.dataset.slot = "1"; el.dataset.source = "hotbar"; el.dataset.index = i;
+    const count = id ? countItem(id) : 0;
+    el.innerHTML = `<span class="key">${6+i}</span>${id?ITEMS[id].icon:""}${count>0?`<span class="qty">${count}</span>`:""}`;
+    el.addEventListener("click", () => useHotbar(i));
+    ui.hotbarWrap.appendChild(el);
+  });
+}
+function renderCrafting(){
+  ui.attachWeaponName.textContent = currentWeapon().name;
+  ui.recipeList.innerHTML = "";
+  RECIPES.forEach(r => {
+    const ok = canCraft(r);
+    const row = document.createElement("div");
+    row.className = "recipe";
+    const reqHtml = r.req.map(x => {
+      const have = countItem(x.id);
+      const cls = have>=x.qty ? "req-ok" : "req-bad";
+      return `<span class="${cls}">${ITEMS[x.id].icon} ${have}/${x.qty}</span>`;
+    }).join("");
+    row.innerHTML = `<div class="rtitle"><span>${ITEMS[r.result].icon} ${r.name}</span></div><div class="req-list">${reqHtml}</div>`;
+    const btn = document.createElement("button");
+    btn.className = "tiny"; btn.textContent = "Craft"; btn.disabled = !ok;
+    btn.addEventListener("click", () => craft(r));
+    row.appendChild(btn);
+    ui.recipeList.appendChild(row);
+  });
+
+  ui.attachList.innerHTML = "";
+  const w = currentWeapon();
+  ["scope_attachment","suppressor_attachment","extended_mag_attachment"].forEach(id => {
+    const def = ITEMS[id];
+    const have = countItem(id);
+    const installed = w.installed[def.attach];
+    const row = document.createElement("div");
+    row.className = "attach-row";
+    row.innerHTML = `<span>${def.icon} ${def.name} — have ${have}</span>`;
+    const btn = document.createElement("button");
+    btn.className = "tiny";
+    btn.textContent = installed ? "Installed" : "Install";
+    btn.disabled = installed || have<=0;
+    btn.addEventListener("click", () => {
+      const idx = inventory.findIndex(s => s && s.id===id);
+      if(idx>=0) installAttachment(idx);
+    });
+    row.appendChild(btn);
+    ui.attachList.appendChild(row);
+  });
+}
+
+// ---- Drag & drop (pointer events — works for mouse and touch alike) ----
+let dragging = null;
+function startDrag(e, source, index){
+  const item = source==="inv" ? inventory[index] : null;
+  if(!item) return;
+  const startX = e.clientX, startY = e.clientY;
+  let moved = false;
+  dragging = { source, index, id:item.id };
+  ui.dragGhost.textContent = ITEMS[item.id].icon;
+  ui.dragGhost.style.display = "block";
+  ui.dragGhost.style.left = startX+"px"; ui.dragGhost.style.top = startY+"px";
+
+  const move = (ev) => {
+    if(Math.hypot(ev.clientX-startX, ev.clientY-startY) > 6) moved = true;
+    ui.dragGhost.style.left = ev.clientX+"px"; ui.dragGhost.style.top = ev.clientY+"px";
+  };
+  const up = (ev) => {
+    document.removeEventListener("pointermove", move);
+    document.removeEventListener("pointerup", up);
+    ui.dragGhost.style.display = "none";
+    if(moved){
+      const el = document.elementFromPoint(ev.clientX, ev.clientY);
+      handleDrop(el);
+    } else {
+      handleSlotClick(source, index, ev.clientX, ev.clientY);
+    }
+    dragging = null;
+  };
+  document.addEventListener("pointermove", move);
+  document.addEventListener("pointerup", up);
+}
+function handleDrop(el){
+  if(!el || !dragging) return;
+  const targetSlot = el.closest("[data-slot]");
+  if(!targetSlot){ renderInventory(); return; }
+  const tSource = targetSlot.dataset.source;
+  const tIndex = targetSlot.dataset.index !== undefined ? parseInt(targetSlot.dataset.index) : null;
+
+  if(dragging.source==="inv" && tSource==="inv" && tIndex!==null){
+    swapOrStackInv(dragging.index, tIndex);
+  } else if(dragging.source==="inv" && tSource==="hotbar"){
+    hotbar[tIndex] = dragging.id;
+    pushToast(`Assigned to hotbar ${tIndex+1}`);
+  } else if(dragging.source==="inv" && tSource==="equip"){
+    const slotType = targetSlot.dataset.equip;
+    const def = ITEMS[dragging.id];
+    if(def.type==="equipment" && def.slot===slotType) equipItem(dragging.index);
+    else pushToast("Can't equip that there");
+  }
+  renderInventory(); renderHotbar(); renderEquipment();
+}
+function swapOrStackInv(a,b){
+  if(a===b) return;
+  const A = inventory[a], B = inventory[b];
+  if(A && B && A.id===B.id){
+    const def = ITEMS[A.id];
+    const room = def.stack - B.qty;
+    if(room>0){ const move=Math.min(room,A.qty); B.qty+=move; A.qty-=move; if(A.qty<=0) inventory[a]=null; return; }
+  }
+  inventory[a] = B; inventory[b] = A;
+}
+function handleSlotClick(source, index, clientX, clientY){
+  if(source!=="inv") return;
+  const s = inventory[index];
+  if(!s){ ui.itemDetail.classList.remove("show"); return; }
+  showItemDetail(s, index, clientX, clientY);
+}
+function showItemDetail(s, idx, clientX, clientY){
+  const def = ITEMS[s.id];
+  let actions = "";
+  if(def.type==="consumable" || def.type==="throwable" || def.type==="placeable" || s.id==="battery") actions += `<button class="tiny" id="detailUse">Use</button>`;
+  if(def.type==="equipment") actions += `<button class="tiny" id="detailUse">Equip</button>`;
+  if(def.type==="attachment") actions += `<button class="tiny" id="detailInstall">Install</button>`;
+  actions += `<button class="tiny secondary" id="detailDrop">Drop</button>`;
+
+  ui.itemDetail.innerHTML = `<h3 style="color:${RARITY[def.rarity].color}">${def.icon} ${def.name}</h3><p>${def.desc}</p><div class="actions">${actions}</div>`;
+  ui.itemDetail.classList.add("show");
+  const x = clamp(clientX, 8, window.innerWidth-230);
+  const y = clamp(clientY, 8, window.innerHeight-140);
+  ui.itemDetail.style.left = x+"px"; ui.itemDetail.style.top = y+"px";
+
+  const useBtn = $("detailUse");
+  if(useBtn) useBtn.addEventListener("click", () => { useInventorySlot(idx); ui.itemDetail.classList.remove("show"); });
+  const installBtn = $("detailInstall");
+  if(installBtn) installBtn.addEventListener("click", () => { installAttachment(idx); ui.itemDetail.classList.remove("show"); });
+  const dropBtn = $("detailDrop");
+  if(dropBtn) dropBtn.addEventListener("click", () => { removeFromSlot(idx, inventory[idx]?inventory[idx].qty:1); renderInventory(); ui.itemDetail.classList.remove("show"); });
+}
+document.addEventListener("pointerdown", (e) => {
+  if(!ui.itemDetail.classList.contains("show")) return;
+  if(ui.itemDetail.contains(e.target)) return;
+  if(e.target.closest(".inv-slot")) return;
+  ui.itemDetail.classList.remove("show");
+});
+
+// ---------------------------------------------------------------------
+// 11. LOOT & PICKUPS (item-based, rarity-weighted)
+// ---------------------------------------------------------------------
+function dropLoot(x, y, guaranteed=false){
+  if(!guaranteed && Math.random() > 0.5) return;
+  const {id, rarity} = rollLootItem();
+  pickups.push({ x, y, id, rarity, bornAt:performance.now() });
+  if(rarity==="legendary") pushToast("✨ Legendary drop!");
+}
 function spawnAmmoCrate(){
   let x,y,tries=0;
   do { x=30+Math.random()*(WORLD_W-60); y=30+Math.random()*(WORLD_H-60); tries++; }
   while(collidesWithSolids(x,y,20) && tries<20);
-  pickups.push({x,y,kind:"ammo",rarity:"common",bornAt:performance.now()});
+  pickups.push({x,y,id:"ammo_pack",rarity:"common",bornAt:performance.now()});
 }
 function spawnMedkit(){
   let x,y,tries=0;
   do { x=30+Math.random()*(WORLD_W-60); y=30+Math.random()*(WORLD_H-60); tries++; }
   while(collidesWithSolids(x,y,20) && tries<20);
-  pickups.push({x,y,kind:"health",rarity:"common",bornAt:performance.now()});
+  pickups.push({x,y,id:"bandage",rarity:"common",bornAt:performance.now()});
 }
-
 function updatePickups(){
   for(let i=pickups.length-1;i>=0;i--){
     const p = pickups[i];
     if(dist2(player.x,player.y,p.x,p.y) < 28){
-      const mult = RARITY[p.rarity].mult;
-      switch(p.kind){
-        case "coin":   player.coins += Math.round(6*mult); Sound.coin(); break;
-        case "ammo":   { const w=currentWeapon(); w.reserve += Math.round(w.mag*0.6*mult); Sound.coin(); break; }
-        case "health": player.hp = Math.min(player.maxHp, player.hp+30*mult); Sound.heal(); break;
-        case "armor":  player.armor = Math.min(player.maxArmor, player.armor+25*mult); Sound.heal(); break;
-      }
+      const leftover = addItemToInventory(p.id, 1);
+      if(leftover>0){ pushToast("🎒 Inventory full!"); continue; }
       spawnParticles(p.x,p.y,10,RARITY[p.rarity].color,150,0.35);
+      Sound.coin();
+      pushToast(`+1 ${ITEMS[p.id].name}`);
       pickups.splice(i,1);
+      renderInventory(); renderHotbar();
     }
   }
 }
 
 // ---------------------------------------------------------------------
-// 11. VISUAL FX helpers — camera shake, decals, hit markers, dmg numbers
+// 13. VISUAL FX helpers — camera shake, decals, hit markers, dmg numbers
 // ---------------------------------------------------------------------
 function shakeCamera(mag, time){
   if(!game.settings.shake) return;
@@ -1035,7 +1591,7 @@ function drawDamageNumbers(){
 }
 
 // ---------------------------------------------------------------------
-// 13. ENVIRONMENT — day/night, weather, fog/vignette, flicker light, minimap
+// 14. ENVIRONMENT — day/night, weather, fog/vignette, flashlight, minimap
 // ---------------------------------------------------------------------
 function updateEnvironment(dt){
   game.dayTime = (game.dayTime + dt/110) % 1; // full cycle ~110s
@@ -1091,6 +1647,24 @@ function drawDayNightOverlay(){
   ctx.fillRect(0,0,WORLD_W,WORLD_H);
 }
 
+function drawFlashlightCone(){
+  if(!(equipment.flashlight && player.flashlightOn && player.flashlightCharge>0)) return;
+  const angle = Math.atan2(mouse.y-player.y, mouse.x-player.x);
+  const spread = 0.5, range = 260;
+  ctx.save();
+  ctx.globalCompositeOperation = "lighter";
+  const grad = ctx.createRadialGradient(player.x,player.y,10,player.x,player.y,range);
+  grad.addColorStop(0,"rgba(255,255,220,0.35)");
+  grad.addColorStop(1,"rgba(255,255,220,0)");
+  ctx.beginPath();
+  ctx.moveTo(player.x,player.y);
+  ctx.arc(player.x,player.y,range,angle-spread,angle+spread);
+  ctx.closePath();
+  ctx.fillStyle = grad;
+  ctx.fill();
+  ctx.restore();
+}
+
 function drawFogVignette(){
   const grad = ctx.createRadialGradient(WORLD_W/2,WORLD_H/2,WORLD_H/3, WORLD_W/2,WORLD_H/2,WORLD_H*0.75);
   grad.addColorStop(0,"rgba(0,0,0,0)");
@@ -1118,7 +1692,7 @@ function drawMinimap(){
 }
 
 // ---------------------------------------------------------------------
-// 14. PROGRESSION — SHOP
+// 15. PROGRESSION — SHOP
 // ---------------------------------------------------------------------
 function shopItems(){
   const items = [];
@@ -1159,7 +1733,7 @@ function renderShop(){
 }
 
 // ---------------------------------------------------------------------
-// 15. TOASTS
+// 16. TOASTS
 // ---------------------------------------------------------------------
 function pushToast(msg){
   const el = document.createElement("div");
@@ -1192,7 +1766,7 @@ function updateWaveProgress(){
 }
 
 // ---------------------------------------------------------------------
-// 16. UPDATE / RENDER LOOP
+// 17. UPDATE / RENDER LOOP
 // ---------------------------------------------------------------------
 function update(dt){
   if(game.mode !== MODE.PLAYING) return;
@@ -1201,12 +1775,16 @@ function update(dt){
   updateWeaponSystems(dt);
   updateBullets(dt);
   updateZombies(dt);
+  updateMolotovs(dt);
+  updateTraps();
   updateParticles(dt);
   updatePickups();
   updateHitMarkers(dt);
   updateDamageNumbers(dt);
   updateShake(dt);
   updateEnvironment(dt);
+  updateFlashlight(dt);
+  updateSurvivalStats(dt);
   updateWaveProgress();
   updateUI();
 
@@ -1252,15 +1830,14 @@ function drawZombies(){
   }
 }
 function drawPickups(){
+  ctx.font = "13px Arial"; ctx.textAlign = "center";
   for(const p of pickups){
     const bob = Math.sin(performance.now()/300 + p.x)*3;
     ctx.fillStyle = RARITY[p.rarity].color;
-    ctx.beginPath(); ctx.arc(p.x, p.y+bob, 9, 0, Math.PI*2); ctx.fill();
-    ctx.fillStyle="#111"; ctx.font="10px Arial"; ctx.textAlign="center";
-    const icon = {coin:"$",ammo:"A",health:"+",armor:"S"}[p.kind];
-    ctx.fillText(icon, p.x, p.y+bob+3);
-    ctx.textAlign="left";
+    ctx.beginPath(); ctx.arc(p.x, p.y+bob, 10, 0, Math.PI*2); ctx.fill();
+    ctx.fillText(ITEMS[p.id].icon, p.x, p.y+bob+4);
   }
+  ctx.textAlign = "left";
 }
 function drawBullets(){
   ctx.fillStyle="#f1c40f";
@@ -1297,16 +1874,19 @@ function draw(){
   ctx.drawImage(decalCanvas,0,0);
   drawBuildings();
   drawCrates();
+  drawTraps();
   drawPickups();
   drawParticles();
   drawPlayer();
   drawZombies();
   drawBullets();
+  drawMolotovs();
   drawHitMarkers();
   drawDamageNumbers();
   drawBossBar();
   drawWeather();
   drawDayNightOverlay();
+  drawFlashlightCone();
   drawFogVignette();
   if(game.mode===MODE.PLAYING) drawCrosshair();
   drawMinimap();
@@ -1315,7 +1895,7 @@ function draw(){
 }
 
 // ---------------------------------------------------------------------
-// 17. UI SYNC
+// 18. UI SYNC
 // ---------------------------------------------------------------------
 let fpsSmoothed = 60, fpsTimer = 0;
 function updateUI(){
@@ -1325,6 +1905,9 @@ function updateUI(){
   ui.armorFill.style.width = `${player.armor/player.maxArmor*100}%`;
   ui.armorLabel.textContent = Math.floor(player.armor);
   ui.stamFill.style.width = `${player.stamina/player.maxStamina*100}%`;
+  ui.hungerFill.style.width = `${player.hunger/player.maxHunger*100}%`;
+  ui.thirstFill.style.width = `${player.thirst/player.maxThirst*100}%`;
+  ui.weightFill.style.width = `${clamp(inventoryWeight()/MAX_WEIGHT*100,0,100)}%`;
 
   const w = currentWeapon();
   ui.ammoText.textContent = `${currentAmmo[currentWeaponKey]}/${w.reserve}`;
@@ -1348,12 +1931,15 @@ function updateFpsCounter(dt){
 }
 
 // ---------------------------------------------------------------------
-// 18. GAME LIFECYCLE
+// 19. GAME LIFECYCLE
 // ---------------------------------------------------------------------
 function closeAnyOverlay(){
   if(game.mode===MODE.SHOP) toggleShop();
+  else if(game.mode===MODE.INVENTORY) toggleInventory();
+  else if(game.mode===MODE.CRAFTING) toggleCraft();
   else if(game.mode===MODE.PAUSED) togglePause();
   ui.settingsOverlay.classList.remove("show");
+  ui.itemDetail.classList.remove("show");
 }
 
 function togglePause(){
@@ -1363,6 +1949,23 @@ function togglePause(){
 function toggleShop(){
   if(game.mode===MODE.PLAYING){ game.mode=MODE.SHOP; renderShop(); ui.shopOverlay.classList.add("show"); }
   else if(game.mode===MODE.SHOP){ game.mode=MODE.PLAYING; ui.shopOverlay.classList.remove("show"); game.lastFrameTime=0; }
+}
+function toggleInventory(){
+  if(game.mode===MODE.PLAYING){
+    game.mode=MODE.INVENTORY;
+    renderInventory(); renderEquipment(); renderHotbar();
+    ui.invOverlay.classList.add("show");
+  } else if(game.mode===MODE.INVENTORY){
+    game.mode=MODE.PLAYING; ui.invOverlay.classList.remove("show"); ui.itemDetail.classList.remove("show"); game.lastFrameTime=0;
+  }
+}
+function toggleCraft(){
+  if(game.mode===MODE.PLAYING){
+    game.mode=MODE.CRAFTING; renderCrafting();
+    ui.craftOverlay.classList.add("show");
+  } else if(game.mode===MODE.CRAFTING){
+    game.mode=MODE.PLAYING; ui.craftOverlay.classList.remove("show"); game.lastFrameTime=0;
+  }
 }
 
 function triggerGameOver(){
@@ -1379,17 +1982,24 @@ function clearTimers(){
 function resetGameState(){
   clearTimers();
   player.x=WORLD_W/2; player.y=WORLD_H/2; player.hp=player.maxHp=100;
-  player.armor=0; player.maxArmor=100; player.stamina=player.maxStamina=100;
+  player.baseMaxArmor=100; player.armorBonus=0; player.armor=0; player.maxArmor=100;
+  player.stamina=player.maxStamina=100;
+  player.hunger=player.maxHunger=100; player.thirst=player.maxThirst=100;
+  player.flashlightOn=false; player.flashlightCharge=100;
   player.coins=0; player.xp=0; player.level=1; player.xpToNext=xpForNext(1);
 
-  WEAPON_ORDER.forEach((k) => { const w=weapons[k]; w.upgrade=0; if(k!=="pistol"){ w.unlocked=false; } });
-  weapons.pistol.reserve = 60; weapons.pistol.unlocked = true;
+  weapons = JSON.parse(JSON.stringify(WEAPON_BASE));
   currentAmmo = { pistol: weapons.pistol.mag };
   currentWeaponKey = "pistol";
   reloading = false; heat = 0;
 
+  inventory = new Array(INV_SIZE).fill(null);
+  hotbar = [null,null,null,null];
+  equipment = { armor:null, flashlight:null };
+
   game.score=0; game.wave=1; game.bossAlive=false;
-  zombies=[]; bullets=[]; enemyShots=[]; pickups=[]; decalCtx.clearRect(0,0,WORLD_W,WORLD_H); decalCount=0;
+  zombies=[]; bullets=[]; enemyShots=[]; pickups=[]; molotovs=[]; traps=[];
+  decalCtx.clearRect(0,0,WORLD_W,WORLD_H); decalCount=0;
   particles.forEach(p=>p.active=false);
   hitMarkers=[]; damageNumbers=[];
   spawnCrates();
@@ -1397,6 +2007,7 @@ function resetGameState(){
   ui.bossText.textContent = "-";
   ui.gameOverOverlay.classList.remove("show");
   buildWeaponSelect();
+  renderInventory(); renderEquipment(); renderHotbar();
 }
 
 function startGame(){
@@ -1454,8 +2065,12 @@ $("pauseSettingsBtn").addEventListener("click", () => { Sound.uiClick(); ui.sett
 $("pauseRestartBtn").addEventListener("click", () => { Sound.uiClick(); restartGame(); });
 $("closeSettingsBtn").addEventListener("click", () => { Sound.uiClick(); ui.settingsOverlay.classList.remove("show"); });
 $("closeShopBtn").addEventListener("click", () => { Sound.uiClick(); toggleShop(); });
+$("closeInvBtn").addEventListener("click", () => { Sound.uiClick(); toggleInventory(); });
+$("closeCraftBtn").addEventListener("click", () => { Sound.uiClick(); toggleCraft(); });
 $("gameOverRestartBtn").addEventListener("click", () => { Sound.uiClick(); restartGame(); });
 $("shopBtn").addEventListener("click", () => { Sound.uiClick(); if(game.mode===MODE.PLAYING||game.mode===MODE.SHOP) toggleShop(); });
+$("invBtn").addEventListener("click", () => { Sound.uiClick(); if(game.mode===MODE.PLAYING||game.mode===MODE.INVENTORY) toggleInventory(); });
+$("craftBtn").addEventListener("click", () => { Sound.uiClick(); if(game.mode===MODE.PLAYING||game.mode===MODE.CRAFTING) toggleCraft(); });
 $("pauseBtn").addEventListener("click", () => { Sound.uiClick(); if(game.mode===MODE.PLAYING||game.mode===MODE.PAUSED) togglePause(); });
 
 $("volMaster").addEventListener("input", (e) => { game.settings.master = e.target.value/100; Sound.applyVolumes(); });
@@ -1468,6 +2083,7 @@ $("toggleFps").addEventListener("change", (e) => { game.settings.showFps = e.tar
 // Initial paint (menu background) + start loop
 buildWeaponSelect();
 spawnCrates();
+renderInventory(); renderEquipment(); renderHotbar();
 requestAnimationFrame(gameLoop);
 </script>
 </body>

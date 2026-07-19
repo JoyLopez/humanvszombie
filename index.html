@@ -526,6 +526,7 @@ const Sound = (() => {
     thunder(){ noise({duration:0.9, gain:0.5, filterFreq:200, filterType:"lowpass", delay:0.15}); },
     footstep(){ noise({duration:0.05, gain:0.06, filterFreq:500, filterType:"lowpass"}); },
     craft(){ tone({freq:400,type:"triangle",duration:0.08,gain:0.2}); tone({freq:600,type:"triangle",duration:0.1,gain:0.2,delay:0.09}); },
+    combo(n){ tone({freq:500+n*30,type:"sine",duration:0.08,gain:0.22,slideTo:800+n*40}); },
   };
 })();
 
@@ -777,9 +778,6 @@ const MAPS = {
   industrial: {
     name:"Industrial Yard", desc:"Loud · suppressors matter",
     buildings:[
-      // Catwalks split into 3 segments each, leaving two 70px stair gaps
-      // for zombies (and humans) to pass between top/bottom spawn bands
-      // and the container maze — a full-width strip would wall them off.
       {x:0,  y:60, w:190,h:26, kind:"catwalk"},
       {x:260,y:60, w:440,h:26, kind:"catwalk"},
       {x:770,y:60, w:190,h:26, kind:"catwalk"},
@@ -836,9 +834,6 @@ function paintTerrain(){
   terrainCtx.globalAlpha = 1;
 }
 
-// Vegetation — sparse static bushes/trees per map, swaying gently. Purely
-// decorative (no collision) so they layer on the ground without touching
-// the existing solid-collision system.
 function buildVegetation(){
   const rand2 = (n) => { let s = n*12345+6789; return ((s%99991)/99991); };
   const count = 16;
@@ -867,6 +862,7 @@ function loadMap(key){
   floodActive = false;
   paintTerrain();
   vegetation = buildVegetation();
+  rebuildSpatialGridStatic();
 }
 paintTerrain();
 
@@ -884,8 +880,6 @@ function drawVegetation(){
   }
 }
 
-// Soft blob shadow, shared by player/zombies/crates. Grows longer and
-// fainter at night (less direct "sun") for a subtle dynamic-lighting feel.
 function drawSoftShadow(x,y,rx,ry){
   const night = getNightAmount();
   ctx.fillStyle = `rgba(0,0,0,${0.28*(1-night*0.6)})`;
@@ -925,7 +919,6 @@ function spawnCrates(){
   crates = MAPS[currentMapKey].crateSpots.map(s => ({x:s.x, y:s.y, size:26, hp:40, maxHp:40, destroyed:false}));
 }
 
-// Flooded Town's periodic flood event — see design doc §8b gimmick.
 let floodActive = false;
 let buildFloodTimer = 0;
 function updateFloodEvent(dt){
@@ -935,7 +928,7 @@ function updateFloodEvent(dt){
   if(buildFloodTimer <= 0){
     if(!floodActive){ pushToast("🌊 The street is flooding!"); }
     floodActive = !floodActive;
-    buildFloodTimer = floodActive ? 12 : 78; // flooded 12s, dry ~78s
+    buildFloodTimer = floodActive ? 12 : 78;
   }
 }
 function inFloodZone(x,y){
@@ -944,10 +937,6 @@ function inFloodZone(x,y){
   return x>=z.x && x<=z.x+z.w && y>=z.y && y<=z.y+z.h;
 }
 
-// ---------------------------------------------------------------------
-// Shockwave rings + high-level FX helpers (explosion/fire/blood) — built
-// on top of the enhanced particle system above for a modern-feeling hit.
-// ---------------------------------------------------------------------
 let shockwaves = [];
 function spawnShockwave(x,y,maxRadius,color="rgba(255,180,80,0.8)"){
   shockwaves.push({x,y,maxRadius,age:0,life:0.35,color});
@@ -982,8 +971,6 @@ function spawnFireEmbers(x,y,count=2){
   spawnParticles(x,y,count,"#ffb347",50,0.6,{glow:true,sizeStart:8,sizeEnd:1,shape:"circle",gravity:-60,spreadAngle:Math.PI*2});
 }
 
-// Directional blood spray — biased away from the hit source so it reads
-// as an actual impact instead of a generic radial puff.
 function spawnBloodFx(x,y,angleFrom=null){
   const angle = angleFrom!=null ? angleFrom : Math.random()*Math.PI*2;
   spawnParticles(x,y,7,"#a3161c",190,0.4,{shape:"circle",sizeStart:6,sizeEnd:2,gravity:220,angle,spreadAngle:1.4,drag:0.9});
@@ -1009,7 +996,6 @@ function damageCrate(c, dmg){
 const WEAPON_ORDER = ["pistol","shotgun","rifle","smg","sniper","rocket","grenade","melee"];
 
 const WEAPON_RARITIES = ["common","rare","epic","legendary"];
-// Stat multiplier + shop cost multiplier for each rarity tier a weapon can be upgraded to.
 const WEAPON_RARITY_INFO = {
   common:    { mult:1.00, color:"#b0b8c0", label:"Common" },
   rare:      { mult:1.18, color:"#3fa7ff", label:"Rare" },
@@ -1032,13 +1018,10 @@ let currentAmmo = { pistol: weapons.pistol.mag };
 let currentWeaponKey = "pistol";
 let lastShotTime = 0;
 let reloading = false, reloadStart = 0;
-let heat = 0; // extra spread from sustained/recoil fire, decays over time
+let heat = 0;
 let muzzleFlashTimer = 0, muzzleFlashX = 0, muzzleFlashY = 0;
 let meleeSwingTimer = 0, meleeSwingAngle = 0;
 
-// A weapon's *effective* stats = base stats scaled by its current rarity tier
-// and any upgrade multiplier, computed fresh (never mutated onto the weapon
-// itself) so re-rolling rarity or attachments always reflects instantly.
 function weaponRarityMult(key){
   return WEAPON_RARITY_INFO[weapons[key].rarity || "common"].mult;
 }
@@ -1094,8 +1077,6 @@ function finishReload(){
   reloading = false;
 }
 
-// Gunfire noise wakes nearby patrolling/searching zombies. Suppressors
-// shrink this radius dramatically — a real tradeoff for installing one.
 function noiseWake(x,y,radius){
   for(const z of zombies){
     if((z.state==="patrol"||z.state==="search") && dist2(z.x,z.y,x,y) < radius){
@@ -1192,13 +1173,50 @@ function updateWeaponSystems(dt){
 }
 
 // ---------------------------------------------------------------------
+// SPATIAL GRID — uniform grid used to speed up neighbor queries (bullet
+// vs zombie collision, zombie separation) so cost scales with local
+// density instead of total zombie count. Rebuilt once per frame.
+// ---------------------------------------------------------------------
+const GRID_CELL = 70;
+const GRID_COLS = Math.ceil(WORLD_W/GRID_CELL), GRID_ROWS = Math.ceil(WORLD_H/GRID_CELL);
+let zombieGrid = new Map();
+function gridKey(cx,cy){ return cx*10000+cy; }
+function rebuildZombieGrid(){
+  zombieGrid.clear();
+  for(const z of zombies){
+    const cx = clamp(Math.floor(z.x/GRID_CELL),0,GRID_COLS-1), cy = clamp(Math.floor(z.y/GRID_CELL),0,GRID_ROWS-1);
+    const key = gridKey(cx,cy);
+    let arr = zombieGrid.get(key);
+    if(!arr){ arr=[]; zombieGrid.set(key,arr); }
+    arr.push(z);
+  }
+}
+// Calls fn(zombie) for every zombie within `radius` of (x,y) — checks only
+// the 3x3 block of grid cells around the point instead of the whole array.
+function forEachZombieNear(x,y,radius,fn){
+  const cx = clamp(Math.floor(x/GRID_CELL),0,GRID_COLS-1), cy = clamp(Math.floor(y/GRID_CELL),0,GRID_ROWS-1);
+  const reach = Math.max(1, Math.ceil(radius/GRID_CELL));
+  for(let gx=cx-reach; gx<=cx+reach; gx++){
+    for(let gy=cy-reach; gy<=cy+reach; gy++){
+      if(gx<0||gy<0||gx>=GRID_COLS||gy>=GRID_ROWS) continue;
+      const arr = zombieGrid.get(gridKey(gx,gy));
+      if(!arr) continue;
+      for(const z of arr) fn(z);
+    }
+  }
+}
+function rebuildSpatialGridStatic(){ /* placeholder hook, grid rebuilds every frame from live zombies */ }
+
+// ---------------------------------------------------------------------
 // 8. ZOMBIES — types, AI state machine (patrol/chase/attack/search), spawn
 // ---------------------------------------------------------------------
 const ZOMBIE_TYPES = {
-  normal:  { speed:58,  hp:100, damage:22, size:25, color:"#4caf50", xp:10, coin:2 },
-  fast:    { speed:118, hp:55,  damage:16, size:20, color:"#ff9f45", xp:15, coin:3 },
-  tank:    { speed:34,  hp:340, damage:34, size:36, color:"#7f8c8d", xp:28, coin:6 },
-  spitter: { speed:46,  hp:75,  damage:12, size:24, color:"#8e44ad", xp:22, coin:5, ranged:true, attackRange:230, retreatRange:120 },
+  normal:   { speed:58,  hp:100, damage:22, size:25, color:"#4caf50", xp:10, coin:2 },
+  fast:     { speed:118, hp:55,  damage:16, size:20, color:"#ff9f45", xp:15, coin:3 },
+  tank:     { speed:34,  hp:340, damage:34, size:36, color:"#7f8c8d", xp:28, coin:6 },
+  spitter:  { speed:46,  hp:75,  damage:12, size:24, color:"#8e44ad", xp:22, coin:5, ranged:true, attackRange:230, retreatRange:120 },
+  screamer: { speed:64,  hp:60,  damage:14, size:23, color:"#e056a8", xp:24, coin:5, screamer:true, screamRange:280, buffRadius:170 },
+  crawler:  { speed:150, hp:40,  damage:18, size:17, color:"#c9862b", xp:16, coin:3, crawler:true },
 };
 const SPAWN_POINTS = [
   {x:-30,y:100}, {x:-30,y:500}, {x:990,y:100}, {x:990,y:500},
@@ -1207,13 +1225,15 @@ const SPAWN_POINTS = [
 const DETECT_RANGE = 260;
 const LOSE_SIGHT_MS = 4000;
 
-function difficultyMultiplier(){ return 1 + (game.wave-1)*0.07; }
+function difficultyMultiplier(){ return 1 + (game.wave-1)*0.065; }
 
 function pickZombieType(){
   const r = Math.random();
-  if(game.wave >= 3 && r < 0.12) return "tank";
-  if(game.wave >= 2 && r < 0.30) return "spitter";
-  if(r < 0.55) return "fast";
+  if(game.wave >= 6 && r < 0.08) return "screamer";
+  if(game.wave >= 3 && r < 0.18) return "tank";
+  if(game.wave >= 4 && r < 0.30) return "crawler";
+  if(game.wave >= 2 && r < 0.44) return "spitter";
+  if(r < 0.68) return "fast";
   return "normal";
 }
 
@@ -1229,8 +1249,11 @@ function spawnZombie(forceType){
     hp: def.hp*mult, maxHp: def.hp*mult, damage: def.damage,
     size: def.size, color: def.color, xp: def.xp, coin: def.coin, ranged: !!def.ranged,
     attackRange: def.attackRange, retreatRange: def.retreatRange,
+    screamer: !!def.screamer, screamRange: def.screamRange, buffRadius: def.buffRadius,
+    buffTimer:0, screamCooldown: rand(0,1),
     state:"patrol", patrolTarget:null, lastSeen:0, lastKnown:{x:sp.x,y:sp.y},
     growlTimer: rand(1,3), lastAttackTime:0, lastSpitTime:0,
+    flankSign: Math.random()<0.5 ? -1 : 1, flankAngle: rand(0.15,0.55),
   });
 }
 
@@ -1241,19 +1264,31 @@ function spawnBoss(){
   let x=60,y=60;
   if(collidesWithSolids(x,y,75)){ x=WORLD_W-60; y=WORLD_H-60; }
   zombies.push({
-    type:"boss", x, y, spawnX:x, spawnY:y, speed:46, hp, maxHp:hp, damage:32,
-    size:76, color:"#c0392b", xp:250, coin:60, ranged:false,
+    type:"boss", x, y, spawnX:x, spawnY:y, speed:46, hp, maxHp:hp, damage:32, baseDamage:32,
+    size:76, color:"#c0392b", xp:250, coin:60, ranged:false, enraged:false,
     state:"chase", patrolTarget:null, lastSeen:performance.now(), lastKnown:{x,y}, growlTimer:1, lastAttackTime:0,
   });
   ui.bossText.textContent = "ACTIVE";
   pushToast("👹 BOSS INCOMING!");
 }
 
-// Night speed boost from the active map (see design doc §8b) — ramps in
-// smoothly with the existing day/night cycle rather than snapping on/off.
 function nightSpeedFactor(){
   const mult = MAPS[currentMapKey].nightSpeedMult;
   return 1 + (mult-1)*getNightAmount();
+}
+
+// Simple separation steering — nudges a zombie away from nearby zombies so
+// the horde spreads out around the player instead of stacking into one
+// pixel-perfect blob. Cheap: uses the spatial grid, only checks close cells.
+function computeSeparation(z){
+  let sx=0, sy=0, count=0;
+  forEachZombieNear(z.x, z.y, 34, (other) => {
+    if(other===z) return;
+    const d = dist2(z.x,z.y,other.x,other.y);
+    if(d>0 && d<32){ sx += (z.x-other.x)/d; sy += (z.y-other.y)/d; count++; }
+  });
+  if(count===0) return {x:0,y:0};
+  return {x:sx/count, y:sy/count};
 }
 
 function patrolMove(z, dt){
@@ -1267,9 +1302,20 @@ function patrolMove(z, dt){
 }
 
 function moveToward(z, tx, ty, dt, speedMult=1){
-  const dx=tx-z.x, dy=ty-z.y, d=Math.hypot(dx,dy)||1;
-  const s = z.speed*speedMult*nightSpeedFactor();
-  const nx=z.x+(dx/d)*s*dt, ny=z.y+(dy/d)*s*dt;
+  let dx=tx-z.x, dy=ty-z.y;
+  // Flanking: when still far from the target, bias the approach angle so
+  // chasing zombies fan out around the player rather than forming a single
+  // file queue that all collapses onto the same attack spot.
+  const d0 = Math.hypot(dx,dy)||1;
+  if(d0 > 60 && z.flankAngle){
+    const perpX = -dy/d0, perpY = dx/d0;
+    dx += perpX * d0 * z.flankAngle * z.flankSign;
+    dy += perpY * d0 * z.flankAngle * z.flankSign;
+  }
+  const d=Math.hypot(dx,dy)||1;
+  const sep = computeSeparation(z);
+  const s = z.speed*speedMult*nightSpeedFactor()*(z.buffTimer>0?1.35:1);
+  const nx=z.x+((dx/d)+sep.x*0.8)*s*dt, ny=z.y+((dy/d)+sep.y*0.8)*s*dt;
   if(!collidesWithSolids(nx,ny,z.size/2)){ z.x=nx; z.y=ny; }
 }
 
@@ -1277,6 +1323,26 @@ function updateZombieAI(z, dt){
   const d = dist2(z.x,z.y,player.x,player.y);
   z.growlTimer -= dt;
   if(z.growlTimer <= 0 && d < 400){ Sound.zombieGrowl(); z.growlTimer = rand(3,6); }
+  if(z.buffTimer>0) z.buffTimer -= dt;
+
+  // Screamers buff nearby zombies' speed for a few seconds once they see
+  // the player, on a cooldown — a reason to prioritize killing them fast.
+  if(z.screamer){
+    z.screamCooldown -= dt;
+    if(d < z.screamRange && z.screamCooldown<=0){
+      z.screamCooldown = 7;
+      Sound.zombieGrowl();
+      forEachZombieNear(z.x, z.y, z.buffRadius, (other) => { other.buffTimer = 3; });
+      pushToast("😱 A screamer is riling up the horde!");
+    }
+  }
+
+  if(z.type==="boss"){
+    if(!z.enraged && z.hp < z.maxHp*0.35){
+      z.enraged = true; z.speed *= 1.4; z.damage = z.baseDamage*1.25;
+      shakeCamera(8,0.3); pushToast("👹 The boss is ENRAGED!");
+    }
+  }
 
   switch(z.state){
     case "patrol":
@@ -1326,10 +1392,26 @@ function fireSpit(z){
 }
 
 function updateZombies(dt){
+  rebuildZombieGrid();
   for(const z of zombies) updateZombieAI(z, dt);
 }
 
-// Shared damage/kill handling so bullets, molotovs and traps all behave consistently.
+// ---------------------------------------------------------------------
+// KILLSTREAK / COMBO SYSTEM — rewards fast consecutive kills with a score
+// and XP multiplier that decays if the player stops getting kills.
+// ---------------------------------------------------------------------
+let comboCount = 0, comboTimer = 0, comboBestThisRun = 0;
+const COMBO_WINDOW = 3.2;
+function comboMultiplier(){ return 1 + Math.min(comboCount,20)*0.08; }
+function registerKillForCombo(){
+  comboCount++; comboTimer = COMBO_WINDOW;
+  comboBestThisRun = Math.max(comboBestThisRun, comboCount);
+  if(comboCount>0 && comboCount%5===0){ Sound.combo(comboCount); pushToast(`🔥 ${comboCount}x COMBO!`); }
+}
+function updateCombo(dt){
+  if(comboTimer>0){ comboTimer -= dt; if(comboTimer<=0){ comboCount=0; } }
+}
+
 function damageZombie(z, dmg, hitAngle=null){
   z.hp -= dmg;
   spawnBloodFx(z.x, z.y, hitAngle);
@@ -1342,12 +1424,14 @@ function killZombie(z){
   const idx = zombies.indexOf(z);
   if(idx<0) return;
   Sound.zombieDeath();
+  registerKillForCombo();
+  const mult = comboMultiplier();
   if(z.type==="boss"){
-    game.bossAlive=false; ui.bossText.textContent="-"; game.score+=500;
+    game.bossAlive=false; ui.bossText.textContent="-"; game.score+=Math.round(500*mult);
     spawnExplosionFx(z.x, z.y, 110);
     shakeCamera(10, 0.3);
-  } else game.score += 10;
-  player.coins += z.coin; gainXp(z.xp);
+  } else game.score += Math.round(10*mult);
+  player.coins += Math.round(z.coin*mult); gainXp(z.xp*mult);
   spawnBloodFx(z.x, z.y);
   spawnParticles(z.x,z.y,10,z.color,260,0.4,{shape:"circle",sizeStart:7,sizeEnd:2});
   queueDecal(z.x, z.y+10, z.size*0.8);
@@ -1375,17 +1459,21 @@ function updateBullets(dt){
     }
     if(consumed){ bullets.splice(i,1); continue; }
 
-    for(const z of zombies){
-      if(dist2(b.x,b.y,z.x,z.y) < z.size/2){
-        if(b.explosive){
-          spawnExplosionFx(b.x,b.y,b.splashRadius); Sound.explosion(); shakeCamera(9,0.25);
-          splashDamage(b.x,b.y,b.splashRadius,b.damage);
-        } else {
-          damageZombie(z, b.damage, Math.atan2(b.dy,b.dx));
-        }
-        consumed = true;
-        break;
+    // Only test zombies in nearby grid cells instead of the whole array —
+    // keeps bullet collision cheap even with a screen full of zombies.
+    let hitZombie = null;
+    forEachZombieNear(b.x, b.y, 40, (z) => {
+      if(hitZombie) return;
+      if(dist2(b.x,b.y,z.x,z.y) < z.size/2) hitZombie = z;
+    });
+    if(hitZombie){
+      if(b.explosive){
+        spawnExplosionFx(b.x,b.y,b.splashRadius); Sound.explosion(); shakeCamera(9,0.25);
+        splashDamage(b.x,b.y,b.splashRadius,b.damage);
+      } else {
+        damageZombie(hitZombie, b.damage, Math.atan2(b.dy,b.dx));
       }
+      consumed = true;
     }
     if(consumed) bullets.splice(i,1);
   }
@@ -1402,13 +1490,11 @@ function updateBullets(dt){
   }
 }
 
-// Shared splash-damage helper for rockets/grenades: hits zombies and crates
-// within radius, falling off linearly with distance.
 function splashDamage(x,y,radius,damage){
-  for(const z of [...zombies]){
+  forEachZombieNear(x, y, radius, (z) => {
     const d = dist2(z.x,z.y,x,y);
     if(d < radius) damageZombie(z, damage*(1-d/radius*0.5));
-  }
+  });
   for(const c of crates){ if(!c.destroyed && dist2(c.x,c.y,x,y) < radius) damageCrate(c, damage*0.6); }
   if(dist2(player.x,player.y,x,y) < radius*0.6) damagePlayer(damage*0.25);
 }
@@ -1427,8 +1513,6 @@ function updateMolotovs(dt){
   for(let i=molotovs.length-1;i>=0;i--){
     const m=molotovs[i];
 
-    // Grenades fly in an arc first, exploding on fuse timeout rather than
-    // burning continuously like a molotov puddle.
     if(m.isGrenade){
       m.x += (m.dx||0)*dt; m.y += (m.dy||0)*dt;
       m.dx = (m.dx||0)*0.98; m.dy = (m.dy||0)*0.98;
@@ -1445,9 +1529,8 @@ function updateMolotovs(dt){
     m.timer-=dt; m.tick-=dt;
     if(m.tick<=0){
       m.tick=0.5;
-      for(const z of [...zombies]){ if(dist2(z.x,z.y,m.x,m.y)<m.radius) damageZombie(z, 18); }
+      forEachZombieNear(m.x, m.y, m.radius, (z) => { if(dist2(z.x,z.y,m.x,m.y)<m.radius) damageZombie(z, 18); });
     }
-    // Continuous flicker of embers/smoke while the fire burns
     spawnFireEmbers(m.x+rand(-m.radius*0.4,m.radius*0.4), m.y+rand(-m.radius*0.3,m.radius*0.3), 1);
     if(Math.random()<0.3) spawnParticles(m.x+rand(-20,20), m.y+10, 1, "rgba(70,70,70,0.5)", 20, 1.1, {shape:"circle", sizeStart:8, sizeEnd:22, gravity:-25, drag:0.97});
     if(m.timer<=0) molotovs.splice(i,1);
@@ -1478,14 +1561,14 @@ function placeTrap(){
 function updateTraps(){
   for(const t of traps){
     if(!t.armed) continue;
-    for(const z of zombies){
+    forEachZombieNear(t.x, t.y, t.radius, (z) => {
+      if(!t.armed) return;
       if(dist2(z.x,z.y,t.x,t.y) < t.radius){
         damageZombie(z, 90);
         t.armed = false;
         spawnParticles(t.x,t.y,10,"#999",150,0.3);
-        break;
       }
-    }
+    });
   }
   traps = traps.filter(t=>t.armed);
 }
@@ -1495,7 +1578,7 @@ function drawTraps(){
 }
 
 // ---------------------------------------------------------------------
-// 10. ITEM DATABASE, INVENTORY, EQUIPMENT, HOTBAR, CRAFTING  (NEW)
+// 10. ITEM DATABASE, INVENTORY, EQUIPMENT, HOTBAR, CRAFTING
 // ---------------------------------------------------------------------
 const RARITY = {
   common:   { color:"#b0b8c0", mult:1,   chance:0.62 },
@@ -1688,7 +1771,6 @@ function toggleFlashlight(){
   player.flashlightOn = !player.flashlightOn;
 }
 
-// Attachment ids we support installing onto weapons, in fixed display order.
 const ATTACHMENT_IDS = ["scope_attachment","suppressor_attachment","extended_mag_attachment","laser_attachment","grip_attachment","light_attachment"];
 
 function installAttachment(idx){
@@ -1709,8 +1791,6 @@ function installAttachment(idx){
   renderInventory(); renderCrafting();
 }
 
-// ---- Weapon rarity upgrades (bought at the shop; each tier is a flat
-// stat-multiplier bump, color-coded to match the item rarity palette). ----
 function upgradeWeaponRarity(key){
   const w = weapons[key];
   const next = nextRarity(key);
@@ -1719,7 +1799,6 @@ function upgradeWeaponRarity(key){
   return true;
 }
 
-// ---- Crafting recipes ----
 const RECIPES = [
   {id:"bandage",     name:"Bandage",        result:"bandage",     qty:1, req:[{id:"cloth",qty:2}]},
   {id:"medkit",      name:"Medkit",         result:"medkit",      qty:1, req:[{id:"cloth",qty:2},{id:"chemicals",qty:1}]},
@@ -1742,7 +1821,6 @@ function craft(r){
   renderCrafting(); renderInventory();
 }
 
-// ---- Rendering: inventory / equipment / hotbar / crafting / tooltips ----
 function renderInventory(){
   ui.invWeightText.textContent = `${inventoryWeight().toFixed(1)} / ${MAX_WEIGHT}`;
   ui.invGrid.innerHTML = "";
@@ -1830,7 +1908,6 @@ function renderCrafting(){
   });
 }
 
-// ---- Drag & drop (pointer events — works for mouse and touch alike) ----
 let dragging = null;
 function startDrag(e, source, index){
   const item = source==="inv" ? inventory[index] : null;
@@ -2018,12 +2095,12 @@ function drawDamageNumbers(){
 // 14. ENVIRONMENT — day/night, weather, fog/vignette, flashlight, minimap
 // ---------------------------------------------------------------------
 function getNightAmount(){
-  return (Math.cos(game.dayTime*Math.PI*2)*-0.5+0.5); // 0=day,1=night
+  return (Math.cos(game.dayTime*Math.PI*2)*-0.5+0.5);
 }
 let lightningSeedX = WORLD_W/2;
 
 function updateEnvironment(dt){
-  game.dayTime = (game.dayTime + dt/110) % 1; // full cycle ~110s
+  game.dayTime = (game.dayTime + dt/110) % 1;
   updateFloodEvent(dt);
 
   game.weatherTimer -= dt;
@@ -2044,10 +2121,9 @@ function updateEnvironment(dt){
   if(game.thunderFlash>0) game.thunderFlash = Math.max(0, game.thunderFlash - dt*2);
 }
 
-// Rain particle pool (cheap fixed-size array, always active while raining)
 const RAIN_COUNT = 90;
 const rain = Array.from({length:RAIN_COUNT}, () => ({x:Math.random()*WORLD_W, y:Math.random()*WORLD_H, len:rand(8,16)}));
-let splashes = []; // ground splash rings where rain lands
+let splashes = [];
 function drawWeather(){
   if(game.weather !== "rain") return;
   const quality = game.settings.particleQuality==="low" ? 0.5 : 1;
@@ -2073,7 +2149,6 @@ function drawWeather(){
 
   if(game.thunderFlash>0){
     ctx.fillStyle=`rgba(255,255,255,${game.thunderFlash*0.5})`; ctx.fillRect(0,0,WORLD_W,WORLD_H);
-    // Jagged lightning bolt, seeded once per flash via a stable-ish x based on the flash id
     if(game.thunderFlash>0.6){
       ctx.save();
       ctx.strokeStyle = `rgba(255,255,255,${game.thunderFlash})`;
@@ -2094,19 +2169,16 @@ function drawWeather(){
 
 function drawDayNightOverlay(){
   const nightAmount = getNightAmount();
-  // Skybox-style palette: warm dawn -> bright day -> orange dusk -> deep-blue night,
-  // driven by the same dayTime cycle instead of a single flat darkness tint.
-  const t = game.dayTime; // 0..1
+  const t = game.dayTime;
   let tint;
-  if(t < 0.08 || t > 0.92) tint = [255,170,110, 0.18];        // dawn/dusk seam — warm
-  else if(t < 0.42) tint = [255,244,220, 0.04];                // day — near-neutral, faint warmth
-  else if(t < 0.5)  tint = [255,140,90, 0.20];                 // dusk
-  else if(t < 0.9)  tint = [10,14,34, 0.5];                    // night — deep blue
+  if(t < 0.08 || t > 0.92) tint = [255,170,110, 0.18];
+  else if(t < 0.42) tint = [255,244,220, 0.04];
+  else if(t < 0.5)  tint = [255,140,90, 0.20];
+  else if(t < 0.9)  tint = [10,14,34, 0.5];
   else tint = [255,170,110, 0.18];
   ctx.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3]})`;
   ctx.fillRect(0,0,WORLD_W,WORLD_H);
 
-  // flickering lantern glow around the player, stronger at night
   const flicker = 0.85 + Math.sin(performance.now()/90)*0.08 + Math.random()*0.05;
   const glowR = (equipment.flashlight && weapons[currentWeaponKey].installed.light ? 190 : 150)*flicker;
   const grad = ctx.createRadialGradient(player.x,player.y,10,player.x,player.y,glowR);
@@ -2115,7 +2187,6 @@ function drawDayNightOverlay(){
   ctx.fillStyle = grad;
   ctx.fillRect(0,0,WORLD_W,WORLD_H);
 
-  // Muzzle flash — brief bright point light layered additively
   if(muzzleFlashTimer>0){
     ctx.save();
     ctx.globalCompositeOperation = "lighter";
@@ -2147,8 +2218,6 @@ function drawFlashlightCone(){
   ctx.restore();
 }
 
-// Weapon-mounted laser sight, drawn only for guns that have the laser
-// attachment installed — a thin bright line from the muzzle to the cursor.
 function drawWeaponLaser(){
   const w = currentWeapon();
   if(!w || w.kind==="melee" || !w.installed.laser) return;
@@ -2162,8 +2231,6 @@ function drawWeaponLaser(){
   ctx.restore();
 }
 
-// Drifting fog patches — soft moving cloud shapes layered under the fixed
-// vignette, giving weather depth instead of a single static darkening.
 const fogPatches = Array.from({length:6}, () => ({
   x:Math.random()*WORLD_W, y:Math.random()*WORLD_H, r:rand(90,170), speed:rand(4,12), phase:Math.random()*Math.PI*2,
 }));
@@ -2281,6 +2348,7 @@ function startWave(){
   if(game.wave % 10 === 0) spawnBoss();
   else if(game.wave % 5 === 0) pushToast(`🌊 Wave ${game.wave} — halfway to the boss!`);
   ui.waveText.textContent = game.wave;
+  showWaveBanner(`WAVE ${game.wave}`, game.wave % 10 === 0 ? "Boss incoming" : `${count} zombies inbound`);
 }
 
 function updateWaveProgress(){
@@ -2291,6 +2359,48 @@ function updateWaveProgress(){
       startWave();
       game.waveTimer = null;
     }, 3000);
+    showWaveBanner("WAVE CLEAR", `Next wave in 3s · +${Math.round(25*comboMultiplier())} bonus coins`);
+    player.coins += Math.round(25*comboMultiplier());
+  }
+}
+
+// Animated wave banner + combo counter — created dynamically so the
+// existing HTML markup doesn't need touching.
+const waveBanner = document.createElement("div");
+waveBanner.id = "waveBanner";
+waveBanner.style.cssText = "position:absolute; top:38%; left:50%; transform:translate(-50%,-50%) scale(0.8); "+
+  "text-align:center; z-index:12; pointer-events:none; opacity:0; transition:opacity .25s ease, transform .25s ease;";
+waveBanner.innerHTML = `<div id="waveBannerTitle" style="font-size:clamp(22px,5vw,38px); font-weight:800; letter-spacing:3px; color:#fff; text-shadow:0 2px 12px rgba(0,0,0,0.8), 0 0 24px var(--accent);"></div>
+  <div id="waveBannerSub" style="font-size:13px; color:var(--muted); margin-top:4px; text-shadow:0 1px 4px #000;"></div>`;
+document.getElementById("stage").appendChild(waveBanner);
+let waveBannerTimeout = null;
+function showWaveBanner(title, sub){
+  $("waveBannerTitle").textContent = title;
+  $("waveBannerSub").textContent = sub;
+  waveBanner.style.opacity = "1";
+  waveBanner.style.transform = "translate(-50%,-50%) scale(1)";
+  clearTimeout(waveBannerTimeout);
+  waveBannerTimeout = setTimeout(() => {
+    waveBanner.style.opacity = "0";
+    waveBanner.style.transform = "translate(-50%,-50%) scale(0.85)";
+  }, 2200);
+}
+
+const comboEl = document.createElement("div");
+comboEl.id = "comboCounter";
+comboEl.style.cssText = "position:absolute; top:10px; left:50%; transform:translateX(-50%) scale(0.9); "+
+  "font-size:15px; font-weight:800; color:#fff; text-shadow:0 2px 6px rgba(0,0,0,0.7); z-index:12; "+
+  "pointer-events:none; opacity:0; transition:opacity .15s ease, transform .15s ease; letter-spacing:1px;";
+document.getElementById("stage").appendChild(comboEl);
+function updateComboUI(){
+  if(comboCount>=2){
+    comboEl.textContent = `${comboCount}x COMBO  ·  x${comboMultiplier().toFixed(2)} SCORE`;
+    comboEl.style.opacity = "1";
+    comboEl.style.transform = "translateX(-50%) scale(1)";
+    comboEl.style.color = comboCount>=10 ? "#ff9f1c" : (comboCount>=5 ? "#f1c40f" : "#fff");
+  } else {
+    comboEl.style.opacity = "0";
+    comboEl.style.transform = "translateX(-50%) scale(0.9)";
   }
 }
 
@@ -2315,17 +2425,16 @@ function update(dt){
   updateEnvironment(dt);
   updateFlashlight(dt);
   updateSurvivalStats(dt);
+  updateCombo(dt);
   updateWaveProgress();
   updateUI();
+  updateComboUI();
 
-  // Music intensity from nearby zombie pressure
   const nearby = zombies.filter(z => dist2(z.x,z.y,player.x,player.y) < 300).length;
   Music.update(clamp(nearby/8,0,1), game.bossAlive, false);
 }
 
 function drawBuildings(){
-  // Ambient-occlusion pass: soft dark strip along the bottom edge of every
-  // solid so they read as grounded rather than floating flat shapes.
   ctx.fillStyle = "rgba(0,0,0,0.25)";
   for(const b of buildings) ctx.fillRect(b.x, b.y+b.h, b.w, 6);
 
@@ -2343,12 +2452,10 @@ function drawFloodZone(){
   ctx.fillStyle = floodActive ? "rgba(40,90,140,0.45)" : "rgba(40,90,140,0.22)";
   ctx.fillRect(z.x,z.y,z.w,z.h);
 
-  // Shimmering water-reflection bands + a faint mirrored silhouette of any
-  // building sitting just above the water line.
   ctx.save();
   ctx.beginPath(); ctx.rect(z.x,z.y,z.w,z.h); ctx.clip();
   for(const b of buildings){
-    if(b.y+b.h < z.y || b.y+b.h > z.y+40) continue; // only buildings hugging the shoreline
+    if(b.y+b.h < z.y || b.y+b.h > z.y+40) continue;
     ctx.globalAlpha = 0.18;
     ctx.fillStyle = "#20303a";
     const reflH = 34;
@@ -2379,8 +2486,6 @@ function drawCrates(){
   }
 }
 
-// Walk-cycle phase accumulator — advances with actual distance moved, so
-// the limb swing speed naturally matches sprint/crouch/walk speed.
 let playerWalkPhase = 0, playerLastX = player.x, playerLastY = player.y;
 function drawPlayer(){
   const moved = Math.hypot(player.x-playerLastX, player.y-playerLastY);
@@ -2390,17 +2495,35 @@ function drawPlayer(){
 
   drawSoftShadow(player.x, player.y+ (player.crouching?22:32), 16, 7);
 
+  // Faint speed-motion trail while sprinting, for extra game feel.
+  if(player.sprinting && moved>0.05){
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = "#5a9bff";
+    ctx.beginPath(); ctx.arc(player.x - Math.cos(playerWalkPhase)*4, player.y, 14, 0, Math.PI*2); ctx.fill();
+    ctx.globalAlpha = 1;
+  }
+
   ctx.save();
   const bodyH = player.crouching ? 24 : 35;
-  // legs (simple swinging rectangles behind the body)
   ctx.fillStyle = "#26344a";
   ctx.fillRect(player.x-10+swing*0.3, player.y+bodyH-6, 8, 12+Math.abs(swing)*0.4);
   ctx.fillRect(player.x+2-swing*0.3,  player.y+bodyH-6, 8, 12+Math.abs(swing)*0.4);
 
-  ctx.fillStyle = player.sprinting ? "#5a9bff" : "#3b7ddb";
+  const bodyGrad = ctx.createLinearGradient(player.x-12,player.y,player.x+12,player.y+bodyH);
+  bodyGrad.addColorStop(0, player.sprinting ? "#6aa9ff" : "#4a86d8");
+  bodyGrad.addColorStop(1, player.sprinting ? "#3d6bb8" : "#2c5390");
+  ctx.fillStyle = bodyGrad;
   ctx.fillRect(player.x-12, player.y, 24, bodyH);
+  ctx.strokeStyle = "rgba(0,0,0,0.35)"; ctx.lineWidth=1.5; ctx.strokeRect(player.x-12, player.y, 24, bodyH);
+
   ctx.fillStyle="#ffcc99";
   ctx.beginPath(); ctx.arc(player.x, player.y-12, 12, 0, Math.PI*2); ctx.fill();
+  // faint low-hp red pulse ring around the player as a readable danger cue
+  if(player.hp < player.maxHp*0.3){
+    const pulse = 0.5+Math.sin(performance.now()/200)*0.3;
+    ctx.strokeStyle = `rgba(255,60,60,${pulse})`; ctx.lineWidth=2;
+    ctx.beginPath(); ctx.arc(player.x, player.y+8, 26, 0, Math.PI*2); ctx.stroke();
+  }
 
   if(currentWeapon().kind==="melee" && meleeSwingTimer>0){
     const t = 1 - meleeSwingTimer/0.22;
@@ -2421,7 +2544,9 @@ function drawHealthBar(x,y,w,ratio,fg="#2ecc71"){
 }
 function drawZombies(){
   for(const z of zombies){
-    drawSoftShadow(z.x, z.y+z.size+16, z.size*0.55, z.size*0.24);
+    const crawl = z.crawler;
+    const bodyBottom = crawl ? z.size*0.6 : z.size+20;
+    drawSoftShadow(z.x, z.y+bodyBottom+16, z.size*0.55, z.size*0.24);
 
     const moving = z.state==="chase"||z.state==="search"||z.state==="patrol";
     if(z.walkPhase===undefined) z.walkPhase = Math.random()*10;
@@ -2429,11 +2554,41 @@ function drawZombies(){
     const lurch = moving ? Math.sin(z.walkPhase)*3 : 0;
     const lunge = z.state==="attack" ? Math.sin(performance.now()/70)*2 : 0;
 
+    // Screamer aura: a pulsing ring that reads as "buffing nearby zombies".
+    if(z.screamer && z.screamCooldown < 2){
+      const pulse = 0.3+Math.sin(performance.now()/120)*0.25;
+      ctx.strokeStyle = `rgba(224,86,168,${Math.max(0,pulse)})`; ctx.lineWidth=2;
+      ctx.beginPath(); ctx.arc(z.x, z.y+8, z.size*1.1, 0, Math.PI*2); ctx.stroke();
+    }
+    // Buffed zombies get a faint speed-line tint.
+    if(z.buffTimer>0){
+      ctx.strokeStyle = "rgba(255,180,220,0.5)"; ctx.lineWidth=1.5;
+      ctx.beginPath(); ctx.arc(z.x, z.y+8, z.size*0.75, 0, Math.PI*2); ctx.stroke();
+    }
+    // Boss enrage tint
+    const enrageFlash = (z.type==="boss" && z.enraged) ? (0.4+Math.sin(performance.now()/100)*0.3) : 0;
+
     ctx.save();
     ctx.translate(lurch*0.4, 0);
-    ctx.fillStyle = z.color;
-    ctx.fillRect(z.x-z.size/2, z.y+lunge, z.size, z.size+20);
-    ctx.beginPath(); ctx.arc(z.x, z.y-10+lurch*0.3, z.size/2, 0, Math.PI*2); ctx.fill();
+    const bodyGrad = ctx.createLinearGradient(z.x, z.y, z.x, z.y+z.size+20);
+    bodyGrad.addColorStop(0, z.color);
+    bodyGrad.addColorStop(1, "rgba(0,0,0,0.35)");
+    ctx.fillStyle = enrageFlash ? `rgba(255,${Math.round(60-enrageFlash*40)},${Math.round(60-enrageFlash*40)},1)` : bodyGrad;
+    if(crawl){
+      // low, wide profile for crawlers instead of the standard upright body
+      ctx.fillRect(z.x-z.size*0.7, z.y+lunge+10, z.size*1.4, z.size*0.6);
+    } else {
+      ctx.fillRect(z.x-z.size/2, z.y+lunge, z.size, z.size+20);
+    }
+    ctx.beginPath(); ctx.arc(z.x, (crawl?z.y+16:z.y-10)+lurch*0.3, z.size/2, 0, Math.PI*2); ctx.fill();
+    // simple glowing eyes toward the player for readability at night
+    const eyeAngle = Math.atan2(player.y-z.y, player.x-z.x);
+    const headY = (crawl?z.y+16:z.y-10)+lurch*0.3;
+    ctx.fillStyle = z.type==="boss" ? "#ffe14d" : "rgba(255,255,255,0.85)";
+    ctx.beginPath();
+    ctx.arc(z.x+Math.cos(eyeAngle-0.35)*z.size*0.28, headY+Math.sin(eyeAngle-0.35)*z.size*0.28, 2, 0, Math.PI*2);
+    ctx.arc(z.x+Math.cos(eyeAngle+0.35)*z.size*0.28, headY+Math.sin(eyeAngle+0.35)*z.size*0.28, 2, 0, Math.PI*2);
+    ctx.fill();
     if(z.state==="attack"){ ctx.strokeStyle="#ff0"; ctx.lineWidth=2; ctx.strokeRect(z.x-z.size/2-2,z.y-2,z.size+4,z.size+24); }
     ctx.restore();
     drawHealthBar(z.x-30, z.y-z.size-25, 60, z.hp/z.maxHp);
@@ -2459,9 +2614,9 @@ function drawBossBar(){
   const boss = zombies.find(z=>z.type==="boss");
   if(!boss) return;
   ctx.fillStyle="#c0392b"; ctx.fillRect(230,20,500,20);
-  ctx.fillStyle="#9b59b6"; ctx.fillRect(230,20,500*(boss.hp/boss.maxHp),20);
+  ctx.fillStyle= boss.enraged ? "#ff5533" : "#9b59b6"; ctx.fillRect(230,20,500*(boss.hp/boss.maxHp),20);
   ctx.fillStyle="#fff"; ctx.font="bold 18px Arial"; ctx.textAlign="center";
-  ctx.fillText("BOSS", 480, 35); ctx.textAlign="left";
+  ctx.fillText(boss.enraged ? "BOSS — ENRAGED" : "BOSS", 480, 35); ctx.textAlign="left";
 }
 function drawCrosshair(){
   ctx.strokeStyle="rgba(255,255,255,0.85)"; ctx.lineWidth=2;
@@ -2591,7 +2746,7 @@ function toggleCraft(){
 function triggerGameOver(){
   game.mode = MODE.GAMEOVER;
   Sound.gameOver();
-  ui.gameOverStats.textContent = `Score: ${game.score} · Wave ${game.wave} · Coins ${player.coins} · Level ${player.level}`;
+  ui.gameOverStats.textContent = `Score: ${game.score} · Wave ${game.wave} · Coins ${player.coins} · Level ${player.level} · Best combo ${comboBestThisRun}x`;
   ui.gameOverOverlay.classList.add("show");
 }
 
@@ -2619,6 +2774,7 @@ function resetGameState(){
 
   game.score=0; game.wave=1; game.bossAlive=false;
   zombies=[]; bullets=[]; enemyShots=[]; pickups=[]; molotovs=[]; traps=[];
+  comboCount=0; comboTimer=0; comboBestThisRun=0;
   decalCtx.clearRect(0,0,WORLD_W,WORLD_H); decalCount=0;
   particles.forEach(p=>p.active=false);
   hitMarkers=[]; damageNumbers=[];
@@ -2650,11 +2806,9 @@ function restartGame(){
   game.lastFrameTime = 0;
 }
 
-// Ambient background spawners (medkits / ammo crates)
 setInterval(() => { if(game.mode===MODE.PLAYING) spawnMedkit(); }, 11000);
 setInterval(() => { if(game.mode===MODE.PLAYING) spawnAmmoCrate(); }, 9000);
 
-// Pause automatically when the tab is hidden, to avoid huge delta-time jumps.
 document.addEventListener("visibilitychange", () => {
   if(document.hidden && game.mode===MODE.PLAYING) togglePause();
   game.lastFrameTime = 0;

@@ -363,38 +363,72 @@ let damageNumbers = [];
 let toasts = [];
 
 // Object pool for particles (avoids constant array churn at high spawn rates)
-const MAX_PARTICLES = 400;
+const MAX_PARTICLES = 500;
 const particles = Array.from({length:MAX_PARTICLES}, () => ({active:false}));
 
-function spawnParticle(x,y,color,speed,life){
+// opts: {gravity, glow, sizeStart, sizeEnd, shape, drag, spreadAngle, angle}
+// All optional — existing 5-arg call sites keep working unchanged.
+function spawnParticle(x,y,color,speed,life,opts={}){
   const p = particles.find(p => !p.active);
   if(!p) return;
-  const angle = Math.random()*Math.PI*2;
+  const spread = opts.spreadAngle ?? Math.PI*2;
+  const baseAngle = opts.angle ?? 0;
+  const angle = baseAngle + (Math.random()-0.5)*spread;
   const v = (0.4+Math.random()*0.6)*speed;
   p.active = true; p.x=x; p.y=y; p.color=color;
   p.dx=Math.cos(angle)*v; p.dy=Math.sin(angle)*v;
   p.life = life; p.age = 0;
+  p.gravity = opts.gravity || 0;
+  p.glow = !!opts.glow;
+  p.sizeStart = opts.sizeStart ?? 4;
+  p.sizeEnd = opts.sizeEnd ?? p.sizeStart;
+  p.shape = opts.shape || "square";
+  p.drag = opts.drag ?? 0.92;
 }
-function spawnParticles(x,y,count,color,speed,life=0.5){
+function spawnParticles(x,y,count,color,speed,life=0.5,opts={}){
   const quality = game.settings.particleQuality === "low" ? 0.4 : 1;
   const n = Math.max(1, Math.round(count*quality));
-  for(let i=0;i<n;i++) spawnParticle(x,y,color,speed,life);
+  for(let i=0;i<n;i++) spawnParticle(x,y,color,speed,life,opts);
 }
 function updateParticles(dt){
   for(const p of particles){
     if(!p.active) continue;
     p.age += dt;
     if(p.age >= p.life){ p.active=false; continue; }
+    p.dy += (p.gravity||0)*dt;
     p.x += p.dx*dt; p.y += p.dy*dt;
-    p.dx *= 0.92; p.dy *= 0.92;
+    p.dx *= p.drag; p.dy *= p.drag;
   }
 }
 function drawParticles(){
+  // Additive/glow particles (fire embers, sparks, magic) render in a
+  // separate pass with "lighter" blending for a soft bloom look.
+  ctx.save();
   for(const p of particles){
-    if(!p.active) continue;
-    ctx.globalAlpha = Math.max(0, 1 - p.age/p.life);
+    if(!p.active || !p.glow) continue;
+    const t = p.age/p.life;
+    const size = p.sizeStart + (p.sizeEnd-p.sizeStart)*t;
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = Math.max(0, 1-t) * 0.9;
+    const grad = ctx.createRadialGradient(p.x,p.y,0,p.x,p.y,size*2);
+    grad.addColorStop(0, p.color);
+    grad.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(p.x,p.y,size*2,0,Math.PI*2); ctx.fill();
+  }
+  ctx.restore();
+
+  for(const p of particles){
+    if(!p.active || p.glow) continue;
+    const t = p.age/p.life;
+    const size = p.sizeStart + (p.sizeEnd-p.sizeStart)*t;
+    ctx.globalAlpha = Math.max(0, 1 - t);
     ctx.fillStyle = p.color;
-    ctx.fillRect(p.x-2, p.y-2, 4, 4);
+    if(p.shape==="circle"){
+      ctx.beginPath(); ctx.arc(p.x,p.y,size/2,0,Math.PI*2); ctx.fill();
+    } else {
+      ctx.fillRect(p.x-size/2, p.y-size/2, size, size);
+    }
   }
   ctx.globalAlpha = 1;
 }
@@ -776,12 +810,87 @@ const MAPS = {
 let currentMapKey = "suburbia";
 let buildings = MAPS[currentMapKey].buildings;
 
+// Procedural ground terrain — painted once per map load onto an offscreen
+// canvas (patches of dirt/cracked earth over the base ground color) so we
+// get textured terrain without per-frame cost.
+const terrainCanvas = document.createElement("canvas");
+terrainCanvas.width = WORLD_W; terrainCanvas.height = WORLD_H;
+const terrainCtx = terrainCanvas.getContext("2d");
+function paintTerrain(){
+  terrainCtx.clearRect(0,0,WORLD_W,WORLD_H);
+  const seedRand = (n) => { let s = n*9301+49297; return ((s%233280)/233280); };
+  for(let i=0;i<70;i++){
+    const rx = seedRand(i*3.1)*WORLD_W, ry = seedRand(i*7.7)*WORLD_H;
+    const r = 20+seedRand(i*13.3)*46;
+    terrainCtx.globalAlpha = 0.05+seedRand(i*5.5)*0.05;
+    terrainCtx.fillStyle = "#000";
+    terrainCtx.beginPath(); terrainCtx.ellipse(rx,ry,r,r*0.6,seedRand(i)*Math.PI,0,Math.PI*2); terrainCtx.fill();
+  }
+  for(let i=0;i<40;i++){
+    const rx = seedRand(i*17.3+1)*WORLD_W, ry = seedRand(i*23.9+1)*WORLD_H;
+    terrainCtx.globalAlpha = 0.04+seedRand(i*3.3)*0.04;
+    terrainCtx.fillStyle = "#fff";
+    terrainCtx.beginPath(); terrainCtx.ellipse(rx,ry,10+seedRand(i)*20,6+seedRand(i)*10,seedRand(i)*Math.PI,0,Math.PI*2); terrainCtx.fill();
+  }
+  terrainCtx.globalAlpha = 1;
+}
+
+// Vegetation — sparse static bushes/trees per map, swaying gently. Purely
+// decorative (no collision) so they layer on the ground without touching
+// the existing solid-collision system.
+function buildVegetation(){
+  const rand2 = (n) => { let s = n*12345+6789; return ((s%99991)/99991); };
+  const count = 16;
+  const veg = [];
+  for(let i=0;i<count;i++){
+    const x = 40+rand2(i*3.7)*(WORLD_W-80);
+    const y = 40+rand2(i*9.1)*(WORLD_H-80);
+    if(collidesWithSolidsIgnoreCrates(x,y,30)) continue;
+    veg.push({x,y, r:10+rand2(i*5.3)*10, phase:rand2(i)*Math.PI*2, dark: rand2(i*7)>0.5});
+  }
+  return veg;
+}
+function collidesWithSolidsIgnoreCrates(x,y,size){
+  for(const b of buildings){
+    if(x+size>b.x && x-size<b.x+b.w && y+size>b.y && y-size<b.y+b.h) return true;
+  }
+  return false;
+}
+let vegetation = [];
+
 function loadMap(key){
   if(!MAPS[key]) return;
   currentMapKey = key;
   buildings = MAPS[key].buildings;
   buildFloodTimer = 0;
   floodActive = false;
+  paintTerrain();
+  vegetation = buildVegetation();
+}
+paintTerrain();
+
+function drawVegetation(){
+  for(const v of vegetation){
+    const sway = Math.sin(performance.now()/1400 + v.phase)*3;
+    ctx.fillStyle = v.dark ? "rgba(40,70,45,0.9)" : "rgba(58,95,58,0.9)";
+    ctx.beginPath();
+    ctx.ellipse(v.x+sway, v.y, v.r, v.r*0.7, 0, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(20,40,25,0.5)";
+    ctx.beginPath();
+    ctx.ellipse(v.x+sway*0.6, v.y+v.r*0.5, v.r*0.8, v.r*0.25, 0, 0, Math.PI*2);
+    ctx.fill();
+  }
+}
+
+// Soft blob shadow, shared by player/zombies/crates. Grows longer and
+// fainter at night (less direct "sun") for a subtle dynamic-lighting feel.
+function drawSoftShadow(x,y,rx,ry){
+  const night = getNightAmount();
+  ctx.fillStyle = `rgba(0,0,0,${0.28*(1-night*0.6)})`;
+  ctx.beginPath();
+  ctx.ellipse(x, y+ry*0.15, rx, ry, 0, 0, Math.PI*2);
+  ctx.fill();
 }
 
 function buildMapSelect(){
@@ -834,14 +943,61 @@ function inFloodZone(x,y){
   return x>=z.x && x<=z.x+z.w && y>=z.y && y<=z.y+z.h;
 }
 
+// ---------------------------------------------------------------------
+// Shockwave rings + high-level FX helpers (explosion/fire/blood) — built
+// on top of the enhanced particle system above for a modern-feeling hit.
+// ---------------------------------------------------------------------
+let shockwaves = [];
+function spawnShockwave(x,y,maxRadius,color="rgba(255,180,80,0.8)"){
+  shockwaves.push({x,y,maxRadius,age:0,life:0.35,color});
+}
+function updateShockwaves(dt){
+  for(let i=shockwaves.length-1;i>=0;i--){
+    shockwaves[i].age += dt;
+    if(shockwaves[i].age >= shockwaves[i].life) shockwaves.splice(i,1);
+  }
+}
+function drawShockwaves(){
+  for(const s of shockwaves){
+    const t = s.age/s.life;
+    ctx.globalAlpha = Math.max(0, 1-t)*0.8;
+    ctx.strokeStyle = s.color;
+    ctx.lineWidth = 4*(1-t)+1;
+    ctx.beginPath();
+    ctx.arc(s.x, s.y, s.maxRadius*t, 0, Math.PI*2);
+    ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+}
+
+function spawnExplosionFx(x,y,radius=70){
+  spawnShockwave(x,y,radius,"rgba(255,190,90,0.85)");
+  spawnParticles(x,y,10,"#fff2c4",260,0.35,{glow:true,sizeStart:14,sizeEnd:2,shape:"circle"});
+  spawnParticles(x,y,18,"#ff8a2b",220,0.55,{glow:true,sizeStart:10,sizeEnd:1,shape:"circle",gravity:-40});
+  spawnParticles(x,y,14,"#4a4a4a",90,0.9,{shape:"circle",sizeStart:6,sizeEnd:16,gravity:-30,drag:0.95});
+}
+
+function spawnFireEmbers(x,y,count=2){
+  spawnParticles(x,y,count,"#ffb347",50,0.6,{glow:true,sizeStart:8,sizeEnd:1,shape:"circle",gravity:-60,spreadAngle:Math.PI*2});
+}
+
+// Directional blood spray — biased away from the hit source so it reads
+// as an actual impact instead of a generic radial puff.
+function spawnBloodFx(x,y,angleFrom=null){
+  const angle = angleFrom!=null ? angleFrom : Math.random()*Math.PI*2;
+  spawnParticles(x,y,7,"#a3161c",190,0.4,{shape:"circle",sizeStart:6,sizeEnd:2,gravity:220,angle,spreadAngle:1.4,drag:0.9});
+  spawnParticles(x,y,3,"#6e0f13",90,0.6,{shape:"circle",sizeStart:9,sizeEnd:4,gravity:260,angle,spreadAngle:2.2,drag:0.88});
+}
+
 function damageCrate(c, dmg){
   c.hp -= dmg;
-  spawnParticles(c.x,c.y,4,"#8a6c3d",120,0.3);
+  spawnParticles(c.x,c.y,4,"#8a6c3d",120,0.3,{shape:"circle",sizeStart:5,sizeEnd:1});
   if(c.hp<=0 && !c.destroyed){
     c.destroyed = true;
     Sound.explosion();
     shakeCamera(6,0.2);
-    spawnParticles(c.x,c.y,16,"#8a6c3d",260,0.5);
+    spawnExplosionFx(c.x,c.y,55);
+    spawnParticles(c.x,c.y,10,"#8a6c3d",200,0.5,{shape:"circle",sizeStart:6,sizeEnd:2,gravity:180});
     dropLoot(c.x,c.y,true);
   }
 }
@@ -863,6 +1019,7 @@ let currentWeaponKey = "pistol";
 let lastShotTime = 0;
 let reloading = false, reloadStart = 0;
 let heat = 0; // extra spread from sustained/recoil fire, decays over time
+let muzzleFlashTimer = 0, muzzleFlashX = 0, muzzleFlashY = 0;
 
 function buildWeaponSelect(){
   ui.weaponSelect.innerHTML = "";
@@ -947,13 +1104,17 @@ function tryShoot(){
       damage: currentDamage(),
     });
   }
-  spawnParticles(player.x + Math.cos(baseAngle)*24, player.y + Math.sin(baseAngle)*24, 4, "#ffe680", 140, 0.15);
+  const muzzleX = player.x + Math.cos(baseAngle)*24, muzzleY = player.y + Math.sin(baseAngle)*24;
+  spawnParticles(muzzleX, muzzleY, 3, "#fff6d5", 60, 0.09, {glow:true, sizeStart:12, sizeEnd:2, shape:"circle"});
+  spawnParticles(muzzleX, muzzleY, 4, "#ffe680", 160, 0.15, {shape:"circle", sizeStart:4, sizeEnd:1, angle:baseAngle, spreadAngle:0.5});
+  muzzleFlashTimer = 0.05; muzzleFlashX = muzzleX; muzzleFlashY = muzzleY;
 
   if(currentAmmo[currentWeaponKey] <= 0) startReload();
 }
 
 function updateWeaponSystems(dt){
   heat = Math.max(0, heat - dt*0.6);
+  muzzleFlashTimer = Math.max(0, muzzleFlashTimer - dt);
   if(reloading && performance.now() - reloadStart >= currentWeapon().reloadTime) finishReload();
   if((keys[" "] || mouse.down) && !reloading) tryShoot();
 }
@@ -1097,9 +1258,9 @@ function updateZombies(dt){
 }
 
 // Shared damage/kill handling so bullets, molotovs and traps all behave consistently.
-function damageZombie(z, dmg){
+function damageZombie(z, dmg, hitAngle=null){
   z.hp -= dmg;
-  spawnParticles(z.x,z.y,5,"#c0392b",200,0.35);
+  spawnBloodFx(z.x, z.y, hitAngle);
   pushDamageNumber(z.x, z.y-10, Math.round(dmg));
   pushHitMarker(z.x,z.y);
   if(z.state==="patrol"||z.state==="search"){ z.state="chase"; z.lastSeen=performance.now(); }
@@ -1109,10 +1270,14 @@ function killZombie(z){
   const idx = zombies.indexOf(z);
   if(idx<0) return;
   Sound.zombieDeath();
-  if(z.type==="boss"){ game.bossAlive=false; ui.bossText.textContent="-"; game.score+=500; }
-  else game.score += 10;
+  if(z.type==="boss"){
+    game.bossAlive=false; ui.bossText.textContent="-"; game.score+=500;
+    spawnExplosionFx(z.x, z.y, 110);
+    shakeCamera(10, 0.3);
+  } else game.score += 10;
   player.coins += z.coin; gainXp(z.xp);
-  spawnParticles(z.x,z.y,16,z.color,300,0.5);
+  spawnBloodFx(z.x, z.y);
+  spawnParticles(z.x,z.y,10,z.color,260,0.4,{shape:"circle",sizeStart:7,sizeEnd:2});
   queueDecal(z.x, z.y+10, z.size*0.8);
   dropLoot(z.x, z.y);
   zombies.splice(idx,1);
@@ -1136,7 +1301,7 @@ function updateBullets(dt){
 
     for(const z of zombies){
       if(dist2(b.x,b.y,z.x,z.y) < z.size/2){
-        damageZombie(z, b.damage);
+        damageZombie(z, b.damage, Math.atan2(b.dy,b.dx));
         consumed = true;
         break;
       }
@@ -1163,7 +1328,7 @@ function throwMolotov(){
   const y = clamp(player.y+Math.sin(a)*dist,20,WORLD_H-20);
   molotovs.push({x,y,timer:4,radius:70,tick:0});
   Sound.explosion(); shakeCamera(8,0.25);
-  spawnParticles(x,y,20,"#ff8800",220,0.6);
+  spawnExplosionFx(x,y,70);
   pushToast("🔥 Molotov thrown!");
 }
 function updateMolotovs(dt){
@@ -1172,16 +1337,24 @@ function updateMolotovs(dt){
     if(m.tick<=0){
       m.tick=0.5;
       for(const z of [...zombies]){ if(dist2(z.x,z.y,m.x,m.y)<m.radius) damageZombie(z, 18); }
-      spawnParticles(m.x+rand(-20,20), m.y+rand(-20,20), 3, "#ff5500", 60, 0.4);
     }
+    // Continuous flicker of embers/smoke while the fire burns
+    spawnFireEmbers(m.x+rand(-m.radius*0.4,m.radius*0.4), m.y+rand(-m.radius*0.3,m.radius*0.3), 1);
+    if(Math.random()<0.3) spawnParticles(m.x+rand(-20,20), m.y+10, 1, "rgba(70,70,70,0.5)", 20, 1.1, {shape:"circle", sizeStart:8, sizeEnd:22, gravity:-25, drag:0.97});
     if(m.timer<=0) molotovs.splice(i,1);
   }
 }
 function drawMolotovs(){
   for(const m of molotovs){
-    const grad = ctx.createRadialGradient(m.x,m.y,4,m.x,m.y,m.radius);
-    grad.addColorStop(0,"rgba(255,140,0,0.55)"); grad.addColorStop(1,"rgba(255,60,0,0)");
-    ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(m.x,m.y,m.radius,0,Math.PI*2); ctx.fill();
+    const flicker = 0.85 + Math.sin(performance.now()/60 + m.x)*0.15;
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    const grad = ctx.createRadialGradient(m.x,m.y,4,m.x,m.y,m.radius*flicker);
+    grad.addColorStop(0,"rgba(255,235,150,0.65)");
+    grad.addColorStop(0.4,"rgba(255,140,0,0.45)");
+    grad.addColorStop(1,"rgba(255,60,0,0)");
+    ctx.fillStyle=grad; ctx.beginPath(); ctx.arc(m.x,m.y,m.radius*flicker,0,Math.PI*2); ctx.fill();
+    ctx.restore();
   }
 }
 
@@ -1708,6 +1881,7 @@ function drawDamageNumbers(){
 function getNightAmount(){
   return (Math.cos(game.dayTime*Math.PI*2)*-0.5+0.5); // 0=day,1=night
 }
+let lightningSeedX = WORLD_W/2;
 
 function updateEnvironment(dt){
   game.dayTime = (game.dayTime + dt/110) % 1; // full cycle ~110s
@@ -1724,6 +1898,7 @@ function updateEnvironment(dt){
     game.weatherTimer = 4;
     if(game.weather==="rain" && Math.random()<0.25){
       game.thunderFlash = 1;
+      lightningSeedX = rand(60, WORLD_W-60);
       Sound.thunder();
     }
   }
@@ -1733,6 +1908,7 @@ function updateEnvironment(dt){
 // Rain particle pool (cheap fixed-size array, always active while raining)
 const RAIN_COUNT = 90;
 const rain = Array.from({length:RAIN_COUNT}, () => ({x:Math.random()*WORLD_W, y:Math.random()*WORLD_H, len:rand(8,16)}));
+let splashes = []; // ground splash rings where rain lands
 function drawWeather(){
   if(game.weather !== "rain") return;
   const quality = game.settings.particleQuality==="low" ? 0.5 : 1;
@@ -1741,17 +1917,54 @@ function drawWeather(){
   for(let i=0;i<count;i++){
     const r = rain[i];
     r.y += 480 * (1/60); r.x -= 60 * (1/60);
-    if(r.y>WORLD_H){ r.y=-10; r.x=Math.random()*WORLD_W; }
+    if(r.y>WORLD_H){
+      r.y=-10; r.x=Math.random()*WORLD_W;
+      if(Math.random()<0.4) splashes.push({x:r.x, y:WORLD_H-rand(0,40), age:0});
+    }
     ctx.beginPath(); ctx.moveTo(r.x,r.y); ctx.lineTo(r.x-6,r.y+r.len); ctx.stroke();
   }
-  if(game.thunderFlash>0){ ctx.fillStyle=`rgba(255,255,255,${game.thunderFlash*0.5})`; ctx.fillRect(0,0,WORLD_W,WORLD_H); }
+  for(let i=splashes.length-1;i>=0;i--){
+    const s = splashes[i]; s.age += 1/60;
+    if(s.age>0.3){ splashes.splice(i,1); continue; }
+    const t = s.age/0.3;
+    ctx.globalAlpha = 1-t; ctx.strokeStyle="rgba(200,220,255,0.6)"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.arc(s.x,s.y,t*6,0,Math.PI*2); ctx.stroke();
+  }
+  ctx.globalAlpha = 1;
+
+  if(game.thunderFlash>0){
+    ctx.fillStyle=`rgba(255,255,255,${game.thunderFlash*0.5})`; ctx.fillRect(0,0,WORLD_W,WORLD_H);
+    // Jagged lightning bolt, seeded once per flash via a stable-ish x based on the flash id
+    if(game.thunderFlash>0.6){
+      ctx.save();
+      ctx.strokeStyle = `rgba(255,255,255,${game.thunderFlash})`;
+      ctx.lineWidth = 2.5;
+      ctx.shadowColor = "#fff"; ctx.shadowBlur = 12;
+      ctx.beginPath();
+      let bx = lightningSeedX, by = 0;
+      ctx.moveTo(bx,by);
+      while(by < WORLD_H*0.6){
+        bx += rand(-30,30); by += rand(20,45);
+        ctx.lineTo(bx,by);
+      }
+      ctx.stroke();
+      ctx.restore();
+    }
+  }
 }
 
 function drawDayNightOverlay(){
-  // sine-based day/night tint: bright near dayTime=0, dark near dayTime=0.5
   const nightAmount = getNightAmount();
-  const alpha = 0.08 + nightAmount*0.42;
-  ctx.fillStyle = `rgba(8,10,28,${alpha})`;
+  // Skybox-style palette: warm dawn -> bright day -> orange dusk -> deep-blue night,
+  // driven by the same dayTime cycle instead of a single flat darkness tint.
+  const t = game.dayTime; // 0..1
+  let tint;
+  if(t < 0.08 || t > 0.92) tint = [255,170,110, 0.18];        // dawn/dusk seam — warm
+  else if(t < 0.42) tint = [255,244,220, 0.04];                // day — near-neutral, faint warmth
+  else if(t < 0.5)  tint = [255,140,90, 0.20];                 // dusk
+  else if(t < 0.9)  tint = [10,14,34, 0.5];                    // night — deep blue
+  else tint = [255,170,110, 0.18];
+  ctx.fillStyle = `rgba(${tint[0]},${tint[1]},${tint[2]},${tint[3]})`;
   ctx.fillRect(0,0,WORLD_W,WORLD_H);
 
   // flickering lantern glow around the player, stronger at night
@@ -1762,6 +1975,19 @@ function drawDayNightOverlay(){
   grad.addColorStop(1, "rgba(255,230,180,0)");
   ctx.fillStyle = grad;
   ctx.fillRect(0,0,WORLD_W,WORLD_H);
+
+  // Muzzle flash — brief bright point light layered additively
+  if(muzzleFlashTimer>0){
+    ctx.save();
+    ctx.globalCompositeOperation = "lighter";
+    ctx.globalAlpha = muzzleFlashTimer/0.05;
+    const mgrad = ctx.createRadialGradient(muzzleFlashX,muzzleFlashY,2,muzzleFlashX,muzzleFlashY,70);
+    mgrad.addColorStop(0,"rgba(255,244,200,0.55)");
+    mgrad.addColorStop(1,"rgba(255,244,200,0)");
+    ctx.fillStyle = mgrad;
+    ctx.fillRect(0,0,WORLD_W,WORLD_H);
+    ctx.restore();
+  }
 }
 
 function drawFlashlightCone(){
@@ -1779,6 +2005,27 @@ function drawFlashlightCone(){
   ctx.closePath();
   ctx.fillStyle = grad;
   ctx.fill();
+  ctx.restore();
+}
+
+// Drifting fog patches — soft moving cloud shapes layered under the fixed
+// vignette, giving weather depth instead of a single static darkening.
+const fogPatches = Array.from({length:6}, () => ({
+  x:Math.random()*WORLD_W, y:Math.random()*WORLD_H, r:rand(90,170), speed:rand(4,12), phase:Math.random()*Math.PI*2,
+}));
+function drawFog(dt){
+  const intensity = game.weather==="rain" ? 0.55 : 0.22;
+  ctx.save();
+  for(const f of fogPatches){
+    f.x += f.speed*(dt||0.016);
+    if(f.x - f.r > WORLD_W) f.x = -f.r;
+    const bob = Math.sin(performance.now()/4000 + f.phase)*10;
+    const grad = ctx.createRadialGradient(f.x,f.y+bob,0,f.x,f.y+bob,f.r);
+    grad.addColorStop(0, `rgba(200,205,215,${intensity*0.35})`);
+    grad.addColorStop(1, "rgba(200,205,215,0)");
+    ctx.fillStyle = grad;
+    ctx.beginPath(); ctx.arc(f.x,f.y+bob,f.r,0,Math.PI*2); ctx.fill();
+  }
   ctx.restore();
 }
 
@@ -1895,6 +2142,7 @@ function update(dt){
   updateMolotovs(dt);
   updateTraps();
   updateParticles(dt);
+  updateShockwaves(dt);
   updatePickups();
   updateHitMarkers(dt);
   updateDamageNumbers(dt);
@@ -1911,6 +2159,11 @@ function update(dt){
 }
 
 function drawBuildings(){
+  // Ambient-occlusion pass: soft dark strip along the bottom edge of every
+  // solid so they read as grounded rather than floating flat shapes.
+  ctx.fillStyle = "rgba(0,0,0,0.25)";
+  for(const b of buildings) ctx.fillRect(b.x, b.y+b.h, b.w, 6);
+
   ctx.lineWidth=2;
   for(const b of buildings){
     if(b.kind==="catwalk"){ ctx.fillStyle="#5a6470"; ctx.strokeStyle="#8a95a3"; }
@@ -1924,18 +2177,61 @@ function drawFloodZone(){
   if(!z) return;
   ctx.fillStyle = floodActive ? "rgba(40,90,140,0.45)" : "rgba(40,90,140,0.22)";
   ctx.fillRect(z.x,z.y,z.w,z.h);
+
+  // Shimmering water-reflection bands + a faint mirrored silhouette of any
+  // building sitting just above the water line.
+  ctx.save();
+  ctx.beginPath(); ctx.rect(z.x,z.y,z.w,z.h); ctx.clip();
+  for(const b of buildings){
+    if(b.y+b.h < z.y || b.y+b.h > z.y+40) continue; // only buildings hugging the shoreline
+    ctx.globalAlpha = 0.18;
+    ctx.fillStyle = "#20303a";
+    const reflH = 34;
+    ctx.fillRect(b.x, z.y, b.w, reflH);
+  }
+  ctx.globalAlpha = 1;
+  const t = performance.now()/1000;
+  ctx.strokeStyle = "rgba(210,230,255,0.25)";
+  ctx.lineWidth = 1;
+  for(let i=0;i<5;i++){
+    const yy = z.y + 12 + i*22 + Math.sin(t*0.6+i)*4;
+    ctx.beginPath();
+    for(let x=0;x<=z.w;x+=20){
+      const yy2 = yy + Math.sin(t*1.4 + x*0.04 + i)*3;
+      if(x===0) ctx.moveTo(z.x+x,yy2); else ctx.lineTo(z.x+x,yy2);
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
 }
 function drawCrates(){
   for(const c of crates){
     if(c.destroyed) continue;
+    drawSoftShadow(c.x, c.y+c.size/2, c.size*0.6, c.size*0.28);
     ctx.fillStyle="#8a6c3d"; ctx.fillRect(c.x-c.size/2,c.y-c.size/2,c.size,c.size);
     ctx.strokeStyle="#5c4726"; ctx.strokeRect(c.x-c.size/2,c.y-c.size/2,c.size,c.size);
     ctx.fillStyle="#c0392b"; ctx.fillRect(c.x-c.size/2,c.y-c.size/2-6,c.size*(c.hp/c.maxHp),3);
   }
 }
+
+// Walk-cycle phase accumulator — advances with actual distance moved, so
+// the limb swing speed naturally matches sprint/crouch/walk speed.
+let playerWalkPhase = 0, playerLastX = player.x, playerLastY = player.y;
 function drawPlayer(){
+  const moved = Math.hypot(player.x-playerLastX, player.y-playerLastY);
+  playerWalkPhase += moved*0.25;
+  playerLastX = player.x; playerLastY = player.y;
+  const swing = moved>0.05 ? Math.sin(playerWalkPhase)*6 : 0;
+
+  drawSoftShadow(player.x, player.y+ (player.crouching?22:32), 16, 7);
+
   ctx.save();
   const bodyH = player.crouching ? 24 : 35;
+  // legs (simple swinging rectangles behind the body)
+  ctx.fillStyle = "#26344a";
+  ctx.fillRect(player.x-10+swing*0.3, player.y+bodyH-6, 8, 12+Math.abs(swing)*0.4);
+  ctx.fillRect(player.x+2-swing*0.3,  player.y+bodyH-6, 8, 12+Math.abs(swing)*0.4);
+
   ctx.fillStyle = player.sprinting ? "#5a9bff" : "#3b7ddb";
   ctx.fillRect(player.x-12, player.y, 24, bodyH);
   ctx.fillStyle="#ffcc99";
@@ -1950,10 +2246,21 @@ function drawHealthBar(x,y,w,ratio,fg="#2ecc71"){
 }
 function drawZombies(){
   for(const z of zombies){
+    drawSoftShadow(z.x, z.y+z.size+16, z.size*0.55, z.size*0.24);
+
+    const moving = z.state==="chase"||z.state==="search"||z.state==="patrol";
+    if(z.walkPhase===undefined) z.walkPhase = Math.random()*10;
+    if(moving) z.walkPhase += 0.15;
+    const lurch = moving ? Math.sin(z.walkPhase)*3 : 0;
+    const lunge = z.state==="attack" ? Math.sin(performance.now()/70)*2 : 0;
+
+    ctx.save();
+    ctx.translate(lurch*0.4, 0);
     ctx.fillStyle = z.color;
-    ctx.fillRect(z.x-z.size/2, z.y, z.size, z.size+20);
-    ctx.beginPath(); ctx.arc(z.x, z.y-10, z.size/2, 0, Math.PI*2); ctx.fill();
+    ctx.fillRect(z.x-z.size/2, z.y+lunge, z.size, z.size+20);
+    ctx.beginPath(); ctx.arc(z.x, z.y-10+lurch*0.3, z.size/2, 0, Math.PI*2); ctx.fill();
     if(z.state==="attack"){ ctx.strokeStyle="#ff0"; ctx.lineWidth=2; ctx.strokeRect(z.x-z.size/2-2,z.y-2,z.size+4,z.size+24); }
+    ctx.restore();
     drawHealthBar(z.x-30, z.y-z.size-25, 60, z.hp/z.maxHp);
   }
 }
@@ -1992,20 +2299,23 @@ function drawCrosshair(){
   ctx.stroke();
 }
 
-function draw(){
+function draw(dt){
   ctx.save();
   if(game.shakeTime>0){
     ctx.translate((Math.random()-0.5)*game.shakeMag, (Math.random()-0.5)*game.shakeMag);
   }
 
   ctx.fillStyle=MAPS[currentMapKey].groundColor; ctx.fillRect(-10,-10,WORLD_W+20,WORLD_H+20);
+  ctx.drawImage(terrainCanvas,0,0);
   ctx.drawImage(decalCanvas,0,0);
   drawFloodZone();
+  drawVegetation();
   drawBuildings();
   drawCrates();
   drawTraps();
   drawPickups();
   drawParticles();
+  drawShockwaves();
   drawPlayer();
   drawZombies();
   drawBullets();
@@ -2013,6 +2323,7 @@ function draw(){
   drawHitMarkers();
   drawDamageNumbers();
   drawBossBar();
+  drawFog(dt);
   drawWeather();
   drawDayNightOverlay();
   drawFlashlightCone();
@@ -2176,7 +2487,7 @@ function gameLoop(timestamp){
   game.lastFrameTime = timestamp;
 
   update(dt);
-  draw();
+  draw(dt);
   updateFpsCounter(dt);
 
   if(game.mode===MODE.MENU) Music.update(0,false,true);
@@ -2213,6 +2524,7 @@ $("toggleFps").addEventListener("change", (e) => { game.settings.showFps = e.tar
 buildWeaponSelect();
 buildMapSelect();
 spawnCrates();
+vegetation = buildVegetation();
 renderInventory(); renderEquipment(); renderHotbar();
 requestAnimationFrame(gameLoop);
 </script>

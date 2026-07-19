@@ -121,6 +121,14 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
 .attach-row{ display:flex; align-items:center; justify-content:space-between; background:var(--panel2); border-radius:8px; padding:6px 8px; margin-bottom:6px; font-size:12px; }
 
 #footer{ color:var(--muted); font-size:11px; text-align:center; max-width:960px; }
+
+/* Map select */
+.map-btn{ background:var(--panel2); color:var(--text); border:2px solid var(--border); text-align:left;
+  padding:8px 10px; border-radius:8px; font-weight:400; }
+.map-btn b{ display:block; font-size:13px; color:var(--text); font-weight:700; }
+.map-btn span{ display:block; font-size:10px; color:var(--muted); margin-top:2px; }
+.map-btn.active{ border-color:var(--accent); box-shadow:0 0 0 1px var(--accent) inset; }
+.map-btn.active b{ color:var(--accent); }
 </style>
 </head>
 <body>
@@ -182,6 +190,10 @@ input[type=range]{ width:140px; accent-color:var(--accent); }
         <div class="row"><span>Throw Molotov / Place Trap</span><b>Q / F</b></div>
         <div class="row"><span>Hotbar</span><b>6-9</b></div>
         <div class="row"><span>Shop / Pause</span><b>B / P</b></div>
+      </div>
+      <div class="panel-box" style="text-align:left;">
+        <div class="row" style="border-bottom:none;"><span>Map</span></div>
+        <div id="mapSelect" style="display:flex; gap:8px; flex-wrap:wrap;"></div>
       </div>
       <div style="display:flex; gap:10px;">
         <button id="startBtn">Start Game</button>
@@ -314,6 +326,7 @@ const ui = {
   shopCoins:$("shopCoins"), shopList:$("shopList"),
   invOverlay:$("invOverlay"), invGrid:$("invGrid"), equipRow:$("equipRow"), invWeightText:$("invWeightText"),
   craftOverlay:$("craftOverlay"), recipeList:$("recipeList"), attachList:$("attachList"), attachWeaponName:$("attachWeaponName"),
+  mapSelect:$("mapSelect"),
 };
 
 function clamp(v,min,max){ return Math.max(min, Math.min(max, v)); }
@@ -691,6 +704,10 @@ function movePlayer(dt){
   let speed = player.baseSpeed;
   if(player.sprinting) speed *= 1.7;
   if(player.crouching) speed *= 0.55;
+  const floodZone = MAPS[currentMapKey].floodZone;
+  if(floodZone && inFloodZone(player.x, player.y)){
+    speed *= floodActive ? floodZone.floodedSpeedMult : floodZone.speedMult;
+  }
 
   const nx = player.x + vx*speed*dt;
   const ny = player.y + vy*speed*dt;
@@ -706,11 +723,82 @@ function movePlayer(dt){
 }
 
 // ---------------------------------------------------------------------
-// BUILDINGS + CRATES (solids) & collision helper
+// MAPS — buildings/crates/gimmicks per layout (see design doc §8b).
+// Buildings marked kind:"catwalk" are drawn as walkways; kind:"container"
+// as industrial crates. Regular buildings omit `kind`.
 // ---------------------------------------------------------------------
-const buildings = [
-  {x:120,y:100,w:150,h:100}, {x:690,y:120,w:170,h:120}, {x:380,y:430,w:220,h:90},
-];
+const MAPS = {
+  suburbia: {
+    name:"Suburbia", desc:"Balanced · day/night cycle",
+    buildings:[
+      {x:100,y:80, w:170,h:110},
+      {x:690,y:90, w:170,h:110},
+      {x:400,y:440,w:180,h:90},
+    ],
+    crateSpots:[ {x:300,y:300}, {x:660,y:300}, {x:180,y:480} ],
+    nightSpeedMult:1.15, noiseMult:1.0, floodZone:null,
+    groundColor:"#262c31",
+  },
+  industrial: {
+    name:"Industrial Yard", desc:"Loud · suppressors matter",
+    buildings:[
+      // Catwalks split into 3 segments each, leaving two 70px stair gaps
+      // for zombies (and humans) to pass between top/bottom spawn bands
+      // and the container maze — a full-width strip would wall them off.
+      {x:0,  y:60, w:190,h:26, kind:"catwalk"},
+      {x:260,y:60, w:440,h:26, kind:"catwalk"},
+      {x:770,y:60, w:190,h:26, kind:"catwalk"},
+      {x:0,  y:514,w:190,h:26, kind:"catwalk"},
+      {x:260,y:514,w:440,h:26, kind:"catwalk"},
+      {x:770,y:514,w:190,h:26, kind:"catwalk"},
+      {x:160,y:220,w:110,h:90, kind:"container"},
+      {x:340,y:260,w:110,h:90, kind:"container"},
+      {x:520,y:220,w:110,h:90, kind:"container"},
+      {x:700,y:260,w:110,h:90, kind:"container"},
+    ],
+    crateSpots:[ {x:430,y:340}, {x:250,y:150}, {x:700,y:450} ],
+    nightSpeedMult:1.0, noiseMult:1.4, floodZone:null,
+    groundColor:"#22262a",
+  },
+  flooded: {
+    name:"Flooded Town", desc:"Street slows humans, not zombies",
+    buildings:[
+      {x:60, y:40, w:150,h:90},
+      {x:400,y:40, w:150,h:90},
+      {x:740,y:40, w:150,h:90},
+    ],
+    crateSpots:[ {x:240,y:300}, {x:500,y:300}, {x:760,y:300} ],
+    nightSpeedMult:1.0, noiseMult:1.0,
+    floodZone:{x:0,y:250,w:960,h:120, speedMult:0.7, floodedSpeedMult:0.45},
+    groundColor:"#232a2e",
+  },
+};
+let currentMapKey = "suburbia";
+let buildings = MAPS[currentMapKey].buildings;
+
+function loadMap(key){
+  if(!MAPS[key]) return;
+  currentMapKey = key;
+  buildings = MAPS[key].buildings;
+  buildFloodTimer = 0;
+  floodActive = false;
+}
+
+function buildMapSelect(){
+  ui.mapSelect.innerHTML = "";
+  Object.keys(MAPS).forEach((key) => {
+    const m = MAPS[key];
+    const btn = document.createElement("button");
+    btn.className = "map-btn" + (key===currentMapKey ? " active" : "");
+    btn.innerHTML = `<b>${m.name}</b><span>${m.desc}</span>`;
+    btn.addEventListener("click", () => {
+      Sound.uiClick();
+      loadMap(key);
+      buildMapSelect();
+    });
+    ui.mapSelect.appendChild(btn);
+  });
+}
 
 function collidesWithSolids(x,y,size){
   for(const b of buildings){
@@ -724,11 +812,26 @@ function collidesWithSolids(x,y,size){
 }
 
 function spawnCrates(){
-  crates = [
-    {x:250,y:300,size:26,hp:40,maxHp:40,destroyed:false},
-    {x:700,y:350,size:26,hp:40,maxHp:40,destroyed:false},
-    {x:500,y:150,size:26,hp:40,maxHp:40,destroyed:false},
-  ];
+  crates = MAPS[currentMapKey].crateSpots.map(s => ({x:s.x, y:s.y, size:26, hp:40, maxHp:40, destroyed:false}));
+}
+
+// Flooded Town's periodic flood event — see design doc §8b gimmick.
+let floodActive = false;
+let buildFloodTimer = 0;
+function updateFloodEvent(dt){
+  const map = MAPS[currentMapKey];
+  if(!map.floodZone) return;
+  buildFloodTimer -= dt;
+  if(buildFloodTimer <= 0){
+    if(!floodActive){ pushToast("🌊 The street is flooding!"); }
+    floodActive = !floodActive;
+    buildFloodTimer = floodActive ? 12 : 78; // flooded 12s, dry ~78s
+  }
+}
+function inFloodZone(x,y){
+  const z = MAPS[currentMapKey].floodZone;
+  if(!z) return false;
+  return x>=z.x && x<=z.x+z.w && y>=z.y && y<=z.y+z.h;
 }
 
 function damageCrate(c, dmg){
@@ -829,7 +932,7 @@ function tryShoot(){
   Sound.shot(currentWeaponKey);
   shakeCamera(w.recoil*0.6, 0.08);
   heat = Math.min(1, heat + 0.18);
-  noiseWake(player.x, player.y, w.installed.suppressor ? 120 : 420);
+  noiseWake(player.x, player.y, (w.installed.suppressor ? 120 : 420) * MAPS[currentMapKey].noiseMult);
 
   const baseAngle = Math.atan2(mouse.y-player.y, mouse.x-player.x);
   const totalSpread = w.spread + heat*0.15;
@@ -913,18 +1016,27 @@ function spawnBoss(){
   pushToast("👹 BOSS INCOMING!");
 }
 
+// Night speed boost from the active map (see design doc §8b) — ramps in
+// smoothly with the existing day/night cycle rather than snapping on/off.
+function nightSpeedFactor(){
+  const mult = MAPS[currentMapKey].nightSpeedMult;
+  return 1 + (mult-1)*getNightAmount();
+}
+
 function patrolMove(z, dt){
   if(!z.patrolTarget || dist2(z.x,z.y,z.patrolTarget.x,z.patrolTarget.y) < 8){
     z.patrolTarget = { x: z.spawnX + rand(-80,80), y: z.spawnY + rand(-80,80) };
   }
   const dx=z.patrolTarget.x-z.x, dy=z.patrolTarget.y-z.y, d=Math.hypot(dx,dy)||1;
-  const nx=z.x+(dx/d)*z.speed*0.4*dt, ny=z.y+(dy/d)*z.speed*0.4*dt;
+  const s = z.speed*nightSpeedFactor();
+  const nx=z.x+(dx/d)*s*0.4*dt, ny=z.y+(dy/d)*s*0.4*dt;
   if(!collidesWithSolids(nx,ny,z.size/2)){ z.x=nx; z.y=ny; }
 }
 
 function moveToward(z, tx, ty, dt, speedMult=1){
   const dx=tx-z.x, dy=ty-z.y, d=Math.hypot(dx,dy)||1;
-  const nx=z.x+(dx/d)*z.speed*speedMult*dt, ny=z.y+(dy/d)*z.speed*speedMult*dt;
+  const s = z.speed*speedMult*nightSpeedFactor();
+  const nx=z.x+(dx/d)*s*dt, ny=z.y+(dy/d)*s*dt;
   if(!collidesWithSolids(nx,ny,z.size/2)){ z.x=nx; z.y=ny; }
 }
 
@@ -1593,8 +1705,13 @@ function drawDamageNumbers(){
 // ---------------------------------------------------------------------
 // 14. ENVIRONMENT — day/night, weather, fog/vignette, flashlight, minimap
 // ---------------------------------------------------------------------
+function getNightAmount(){
+  return (Math.cos(game.dayTime*Math.PI*2)*-0.5+0.5); // 0=day,1=night
+}
+
 function updateEnvironment(dt){
   game.dayTime = (game.dayTime + dt/110) % 1; // full cycle ~110s
+  updateFloodEvent(dt);
 
   game.weatherTimer -= dt;
   if(game.weatherTimer <= 0){
@@ -1632,7 +1749,7 @@ function drawWeather(){
 
 function drawDayNightOverlay(){
   // sine-based day/night tint: bright near dayTime=0, dark near dayTime=0.5
-  const nightAmount = (Math.cos(game.dayTime*Math.PI*2)*-0.5+0.5); // 0=day,1=night
+  const nightAmount = getNightAmount();
   const alpha = 0.08 + nightAmount*0.42;
   ctx.fillStyle = `rgba(8,10,28,${alpha})`;
   ctx.fillRect(0,0,WORLD_W,WORLD_H);
@@ -1794,8 +1911,19 @@ function update(dt){
 }
 
 function drawBuildings(){
-  ctx.fillStyle="#4a4f55"; ctx.strokeStyle="#787f87"; ctx.lineWidth=2;
-  for(const b of buildings){ ctx.fillRect(b.x,b.y,b.w,b.h); ctx.strokeRect(b.x,b.y,b.w,b.h); }
+  ctx.lineWidth=2;
+  for(const b of buildings){
+    if(b.kind==="catwalk"){ ctx.fillStyle="#5a6470"; ctx.strokeStyle="#8a95a3"; }
+    else if(b.kind==="container"){ ctx.fillStyle="#8a5a2d"; ctx.strokeStyle="#3d2a12"; }
+    else { ctx.fillStyle="#4a4f55"; ctx.strokeStyle="#787f87"; }
+    ctx.fillRect(b.x,b.y,b.w,b.h); ctx.strokeRect(b.x,b.y,b.w,b.h);
+  }
+}
+function drawFloodZone(){
+  const z = MAPS[currentMapKey].floodZone;
+  if(!z) return;
+  ctx.fillStyle = floodActive ? "rgba(40,90,140,0.45)" : "rgba(40,90,140,0.22)";
+  ctx.fillRect(z.x,z.y,z.w,z.h);
 }
 function drawCrates(){
   for(const c of crates){
@@ -1870,8 +1998,9 @@ function draw(){
     ctx.translate((Math.random()-0.5)*game.shakeMag, (Math.random()-0.5)*game.shakeMag);
   }
 
-  ctx.fillStyle="#262c31"; ctx.fillRect(-10,-10,WORLD_W+20,WORLD_H+20);
+  ctx.fillStyle=MAPS[currentMapKey].groundColor; ctx.fillRect(-10,-10,WORLD_W+20,WORLD_H+20);
   ctx.drawImage(decalCanvas,0,0);
+  drawFloodZone();
   drawBuildings();
   drawCrates();
   drawTraps();
@@ -2082,6 +2211,7 @@ $("toggleFps").addEventListener("change", (e) => { game.settings.showFps = e.tar
 
 // Initial paint (menu background) + start loop
 buildWeaponSelect();
+buildMapSelect();
 spawnCrates();
 renderInventory(); renderEquipment(); renderHotbar();
 requestAnimationFrame(gameLoop);

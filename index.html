@@ -336,7 +336,7 @@ function dist2(ax,ay,bx,by){ return Math.hypot(ax-bx, ay-by); }
 // ---------------------------------------------------------------------
 // 2. GAME STATE / ENTITY STORES
 // ---------------------------------------------------------------------
-const MODE = { MENU:"menu", PLAYING:"playing", PAUSED:"paused", SHOP:"shop", INVENTORY:"inventory", CRAFTING:"crafting", GAMEOVER:"gameover" };
+const MODE = { MENU:"menu", PLAYING:"playing", PAUSED:"paused", SHOP:"shop", INVENTORY:"inventory", CRAFTING:"crafting", GAMEOVER:"gameover", REPLAY:"replay", PHOTO:"photo" };
 
 const game = {
   mode: MODE.MENU,
@@ -361,6 +361,84 @@ let decalsQueue = []; // {x,y,r,alpha}
 let hitMarkers = [];
 let damageNumbers = [];
 let toasts = [];
+
+// ---------------------------------------------------------------------
+// RUN STATS, KILL FEED, META-PROGRESS (localStorage), EASTER EGGS
+// ---------------------------------------------------------------------
+const stats = {
+  shotsFired:0, shotsHit:0, damageDealt:0, damageTaken:0,
+  killsByType:{}, runStartTime:0, meleeKills:0,
+};
+function resetStats(){
+  stats.shotsFired=0; stats.shotsHit=0; stats.damageDealt=0; stats.damageTaken=0;
+  stats.killsByType={}; stats.runStartTime=performance.now(); stats.meleeKills=0;
+}
+function statAccuracy(){ return stats.shotsFired>0 ? Math.round(stats.shotsHit/stats.shotsFired*100) : 0; }
+function topKilledType(){
+  let best=null, bestN=0;
+  for(const k in stats.killsByType){ if(stats.killsByType[k]>bestN){ best=k; bestN=stats.killsByType[k]; } }
+  return best ? {type:best, count:bestN} : null;
+}
+
+let killFeed = [];
+const killFeedEl = document.createElement("div");
+killFeedEl.id = "killFeed";
+killFeedEl.style.cssText = "position:absolute; top:38px; right:8px; z-index:11; display:flex; flex-direction:column; "+
+  "gap:3px; align-items:flex-end; pointer-events:none; max-width:220px;";
+function pushKillFeed(text, color){
+  const row = document.createElement("div");
+  row.textContent = text;
+  row.style.cssText = `background:rgba(10,12,15,0.75); border-left:3px solid ${color||"var(--accent)"}; `+
+    "color:#fff; font-size:11px; padding:3px 8px; border-radius:4px; white-space:nowrap; "+
+    "animation: killFeedIn .18s ease, killFeedOut .35s ease 2.6s forwards;";
+  killFeedEl.appendChild(row);
+  setTimeout(() => row.remove(), 3100);
+}
+(function injectKillFeedKeyframes(){
+  const style = document.createElement("style");
+  style.textContent = `@keyframes killFeedIn{from{opacity:0; transform:translateX(10px);} to{opacity:1; transform:translateX(0);}}
+  @keyframes killFeedOut{to{opacity:0; transform:translateX(10px);}}`;
+  document.head.appendChild(style);
+})();
+
+// --- Meta progress: persisted locally in this browser (no cloud/account
+// system exists for a standalone file, so localStorage is the honest
+// substitute — it persists across sessions on this device only). ---
+const META_KEY = "zsp_save_v1";
+let meta = { bestScore:0, bestWave:0, totalKills:0, runsPlayed:0, unlockedWeapons:[], konamiUnlocked:false };
+function loadMeta(){
+  try{
+    const raw = localStorage.getItem(META_KEY);
+    if(raw) meta = Object.assign(meta, JSON.parse(raw));
+  } catch(e){ /* localStorage unavailable — meta just stays default, run still works */ }
+}
+function saveMeta(){
+  try{ localStorage.setItem(META_KEY, JSON.stringify(meta)); } catch(e){ /* ignore */ }
+}
+function applyUnlockedWeapons(){
+  meta.unlockedWeapons.forEach(key => { if(weapons[key]) weapons[key].unlocked = true; });
+}
+
+// --- Easter eggs ---
+let discoTimer = 0;
+const KONAMI_SEQ = ["arrowup","arrowup","arrowdown","arrowdown","arrowleft","arrowright","arrowleft","arrowright","b","a"];
+let konamiProgress = 0;
+function checkKonami(key){
+  if(key === KONAMI_SEQ[konamiProgress]) konamiProgress++;
+  else konamiProgress = (key === KONAMI_SEQ[0]) ? 1 : 0;
+  if(konamiProgress >= KONAMI_SEQ.length){
+    konamiProgress = 0;
+    discoTimer = 10;
+    meta.konamiUnlocked = true; saveMeta();
+    pushToast("🌈 KONAMI CODE! Disco mode for 10s");
+  }
+}
+let secretWordBuffer = "";
+function checkSecretWord(key){
+  if(key.length!==1) return;
+  secretWordBuffer = (secretWordBuffer+key).slice(-6);
+  if(secretWordBuffer === "claude"){ pushToast("🤖 Built with Claude — hi there!"); }
+}
 
 // Object pool for particles (avoids constant array churn at high spawn rates)
 const MAX_PARTICLES = 500;
@@ -597,6 +675,8 @@ function toWorldCoords(clientX, clientY){
 window.addEventListener("keydown", (e) => {
   keys[e.key.toLowerCase()] = true;
   Sound.unlock();
+  checkKonami(e.key.toLowerCase());
+  if(game.mode===MODE.MENU) checkSecretWord(e.key.toLowerCase());
   if(e.code === "Space"){ e.preventDefault(); tryShoot(); }
   if(["1","2","3","4","5","6","7","8"].includes(e.key)){
     const order = WEAPON_ORDER;
@@ -687,9 +767,10 @@ function damagePlayer(amount, {isAttack=true, suppressFx=false} = {}){
     remaining -= absorbed;
   }
   player.hp -= remaining;
+  if(remaining>0) stats.damageTaken += remaining;
   if(!suppressFx){ triggerHurtFlash(); shakeCamera(4, 0.15); }
   if(isAttack) Sound.hurt();
-  if(player.hp <= 0){ player.hp = 0; triggerGameOver(); }
+  if(player.hp <= 0){ player.hp = 0; startDeathReplay(); }
 }
 
 function triggerHurtFlash(){
@@ -1099,6 +1180,7 @@ function tryShoot(){
 
   lastShotTime = now;
   currentAmmo[currentWeaponKey]--;
+  stats.shotsFired++;
   Sound.shot(currentWeaponKey==="rocket"?"rocket":currentWeaponKey);
   shakeCamera(w.recoil*(w.installed.grip?0.4:0.6), 0.08);
   heat = Math.min(1, heat + 0.18);
@@ -1217,6 +1299,7 @@ const ZOMBIE_TYPES = {
   spitter:  { speed:46,  hp:75,  damage:12, size:24, color:"#8e44ad", xp:22, coin:5, ranged:true, attackRange:230, retreatRange:120 },
   screamer: { speed:64,  hp:60,  damage:14, size:23, color:"#e056a8", xp:24, coin:5, screamer:true, screamRange:280, buffRadius:170 },
   crawler:  { speed:150, hp:40,  damage:18, size:17, color:"#c9862b", xp:16, coin:3, crawler:true },
+  chicken:  { speed:95,  hp:20,  damage:8,  size:18, color:"#fff3c4", xp:40, coin:15, crawler:false },
 };
 const SPAWN_POINTS = [
   {x:-30,y:100}, {x:-30,y:500}, {x:990,y:100}, {x:990,y:500},
@@ -1229,6 +1312,7 @@ function difficultyMultiplier(){ return 1 + (game.wave-1)*0.065; }
 
 function pickZombieType(){
   const r = Math.random();
+  if(r < 0.005) return "chicken"; // hidden easter egg — very rare
   if(game.wave >= 6 && r < 0.08) return "screamer";
   if(game.wave >= 3 && r < 0.18) return "tank";
   if(game.wave >= 4 && r < 0.30) return "crawler";
@@ -1414,6 +1498,7 @@ function updateCombo(dt){
 
 function damageZombie(z, dmg, hitAngle=null){
   z.hp -= dmg;
+  stats.damageDealt += dmg;
   spawnBloodFx(z.x, z.y, hitAngle);
   pushDamageNumber(z.x, z.y-10, Math.round(dmg));
   pushHitMarker(z.x,z.y);
@@ -1425,7 +1510,21 @@ function killZombie(z){
   if(idx<0) return;
   Sound.zombieDeath();
   registerKillForCombo();
+  stats.killsByType[z.type] = (stats.killsByType[z.type]||0) + 1;
+  meta.totalKills++;
   const mult = comboMultiplier();
+  const feedIcon = { normal:"🧟", fast:"🏃", tank:"🛢️", spitter:"🤮", screamer:"😱", crawler:"🐍", chicken:"🐔", boss:"👹" }[z.type] || "🧟";
+  if(z.type==="chicken"){
+    pushToast("🐔 You defeated the legendary Chicken Zombie! +50 bonus coins");
+    player.coins += 50;
+  }
+  if(z.type==="boss"){
+    pushKillFeed(`👹 BOSS DOWN — ${Math.round(500*mult)} pts`, "#ff5533");
+  } else if(comboCount>=5){
+    pushKillFeed(`${feedIcon} Zombie eliminated (${comboCount}x combo)`, "#f1c40f");
+  } else {
+    pushKillFeed(`${feedIcon} Zombie eliminated`, "#4fd1c5");
+  }
   if(z.type==="boss"){
     game.bossAlive=false; ui.bossText.textContent="-"; game.score+=Math.round(500*mult);
     spawnExplosionFx(z.x, z.y, 110);
@@ -1467,6 +1566,7 @@ function updateBullets(dt){
       if(dist2(b.x,b.y,z.x,z.y) < z.size/2) hitZombie = z;
     });
     if(hitZombie){
+      stats.shotsHit++;
       if(b.explosive){
         spawnExplosionFx(b.x,b.y,b.splashRadius); Sound.explosion(); shakeCamera(9,0.25);
         splashDamage(b.x,b.y,b.splashRadius,b.damage);
@@ -2289,7 +2389,7 @@ function shopItems(){
   WEAPON_ORDER.forEach((key) => {
     const w = weapons[key];
     if(!w.unlocked){
-      items.push({ label:`Unlock ${w.name}`, cost:w.cost, action:() => { w.unlocked=true; buildWeaponSelect(); pushToast(`🔫 ${w.name} unlocked!`); } });
+      items.push({ label:`Unlock ${w.name}`, cost:w.cost, action:() => { w.unlocked=true; if(!meta.unlockedWeapons.includes(key)){ meta.unlockedWeapons.push(key); saveMeta(); } buildWeaponSelect(); pushToast(`🔫 ${w.name} unlocked for good!`); } });
     } else {
       const next = nextRarity(key);
       if(next !== w.rarity){
@@ -2392,6 +2492,7 @@ comboEl.style.cssText = "position:absolute; top:10px; left:50%; transform:transl
   "font-size:15px; font-weight:800; color:#fff; text-shadow:0 2px 6px rgba(0,0,0,0.7); z-index:12; "+
   "pointer-events:none; opacity:0; transition:opacity .15s ease, transform .15s ease; letter-spacing:1px;";
 document.getElementById("stage").appendChild(comboEl);
+document.getElementById("stage").appendChild(killFeedEl);
 function updateComboUI(){
   if(comboCount>=2){
     comboEl.textContent = `${comboCount}x COMBO  ·  x${comboMultiplier().toFixed(2)} SCORE`;
@@ -2407,6 +2508,251 @@ function updateComboUI(){
 // ---------------------------------------------------------------------
 // 17. UPDATE / RENDER LOOP
 // ---------------------------------------------------------------------
+// ---------------------------------------------------------------------
+// DEATH REPLAY — records a rolling ~6s buffer of lightweight snapshots
+// while playing; on death, plays them back in slow-mo before the
+// game-over screen. Not a full deterministic match replay (that would
+// need a seeded RNG driving the whole simulation) — just a highlight of
+// the moment you died.
+// ---------------------------------------------------------------------
+const REPLAY_WINDOW = 6.0;
+let replayBuffer = [];
+let replaySnapTimer = 0;
+function recordReplaySnapshot(dt){
+  replaySnapTimer -= dt;
+  if(replaySnapTimer > 0) return;
+  replaySnapTimer = 0.08;
+  replayBuffer.push({
+    t: performance.now(),
+    px: player.x, py: player.y, phealth: player.hp,
+    zs: zombies.map(z => ({x:z.x, y:z.y, size:z.size, color:z.color, type:z.type})),
+  });
+  const cutoff = performance.now() - REPLAY_WINDOW*1000;
+  while(replayBuffer.length && replayBuffer[0].t < cutoff) replayBuffer.shift();
+}
+let replayFrames = [], replayIdx = 0, replayAccum = 0, replayDone = null;
+function startDeathReplay(){
+  if(replayBuffer.length < 3){ triggerGameOver(); return; }
+  replayFrames = replayBuffer.slice();
+  replayIdx = 0; replayAccum = 0;
+  game.mode = MODE.REPLAY;
+}
+function updateReplay(dt){
+  replayAccum += dt*0.45; // slow-mo playback
+  while(replayAccum > 0.08 && replayIdx < replayFrames.length-1){
+    replayAccum -= 0.08; replayIdx++;
+  }
+  if(replayIdx >= replayFrames.length-1){
+    setTimeout(() => { if(game.mode===MODE.REPLAY) triggerGameOver(); }, 700);
+    replayIdx = replayFrames.length-1;
+  }
+}
+function drawReplay(){
+  ctx.fillStyle = MAPS[currentMapKey].groundColor; ctx.fillRect(0,0,WORLD_W,WORLD_H);
+  ctx.drawImage(terrainCanvas,0,0);
+  ctx.drawImage(decalCanvas,0,0);
+  drawBuildings();
+  const f = replayFrames[replayIdx];
+  if(f){
+    for(const z of f.zs){
+      ctx.fillStyle = z.color;
+      ctx.beginPath(); ctx.arc(z.x, z.y, z.size/2, 0, Math.PI*2); ctx.fill();
+    }
+    ctx.fillStyle = "#4a86d8";
+    ctx.beginPath(); ctx.arc(f.px, f.py, PLAYER_RADIUS*0.8, 0, Math.PI*2); ctx.fill();
+  }
+  ctx.fillStyle = "rgba(0,0,0,0.45)"; ctx.fillRect(0,0,WORLD_W,54);
+  ctx.fillStyle = "#ff5566"; ctx.font = "bold 22px Arial"; ctx.textAlign = "center";
+  ctx.fillText("💀 DEATH REPLAY", WORLD_W/2, 34);
+  ctx.font = "11px Arial"; ctx.fillStyle = "var(--muted)"; ctx.fillStyle = "#8b95a1";
+  ctx.fillText("(click to skip)", WORLD_W/2, 50);
+  ctx.textAlign = "left";
+}
+canvas.addEventListener("click", () => { if(game.mode===MODE.REPLAY) triggerGameOver(); });
+
+// ---------------------------------------------------------------------
+// DYNAMIC EVENTS — occasional mid-wave set-pieces: supply drops, a
+// crashing helicopter, and horde surges.
+// ---------------------------------------------------------------------
+let nextEventTimer = rand(35,55);
+let activeEvent = null; // {type, phase, timer, x, y}
+function updateDynamicEvents(dt){
+  if(activeEvent){
+    activeEvent.timer -= dt;
+    if(activeEvent.type==="supply" && activeEvent.phase==="falling"){
+      activeEvent.y += 60*dt;
+      if(activeEvent.timer<=0){
+        activeEvent.phase="landed";
+        pickups.push({x:activeEvent.x, y:activeEvent.y, id: rollLootItem().id, rarity:"epic", bornAt:performance.now()});
+        pickups.push({x:activeEvent.x+18, y:activeEvent.y, id: rollLootItem().id, rarity:"rare", bornAt:performance.now()});
+        pushToast("📦 Supply crate landed!");
+        activeEvent = null;
+      }
+    } else if(activeEvent.type==="heli" && activeEvent.phase==="warning"){
+      if(activeEvent.timer<=0){
+        activeEvent.phase="crashed";
+        spawnExplosionFx(activeEvent.x, activeEvent.y, 90);
+        Sound.explosion(); shakeCamera(14,0.4);
+        splashDamage(activeEvent.x, activeEvent.y, 90, 60);
+        for(let i=0;i<3;i++) dropLoot(activeEvent.x+rand(-30,30), activeEvent.y+rand(-30,30), true);
+        noiseWake(activeEvent.x, activeEvent.y, 500);
+        activeEvent = null;
+      }
+    }
+    return;
+  }
+  nextEventTimer -= dt;
+  if(nextEventTimer <= 0){
+    nextEventTimer = rand(45,75);
+    const roll = Math.random();
+    if(roll < 0.4){
+      const x = clamp(rand(80,WORLD_W-80),80,WORLD_W-80);
+      activeEvent = {type:"supply", phase:"falling", timer:3, x, y:-20};
+      pushToast("📦 Supply drop incoming!");
+    } else if(roll < 0.75){
+      const edge = Math.random()<0.5 ? 40 : WORLD_W-40;
+      const y = rand(80,WORLD_H-80);
+      activeEvent = {type:"heli", phase:"warning", timer:2.5, x:edge, y};
+      pushToast("🚁 Helicopter losing control nearby!");
+    } else {
+      pushToast("🚨 Zombie invasion surge!");
+      for(let i=0;i<6;i++) spawnZombie();
+    }
+  }
+}
+function drawDynamicEvents(){
+  if(!activeEvent) return;
+  if(activeEvent.type==="supply" && activeEvent.phase==="falling"){
+    ctx.strokeStyle = "#eee"; ctx.lineWidth=1;
+    ctx.beginPath(); ctx.moveTo(activeEvent.x-14,activeEvent.y-14); ctx.lineTo(activeEvent.x,activeEvent.y);
+    ctx.moveTo(activeEvent.x+14,activeEvent.y-14); ctx.lineTo(activeEvent.x,activeEvent.y); ctx.stroke();
+    ctx.fillStyle="#e8ecef"; ctx.beginPath(); ctx.ellipse(activeEvent.x,activeEvent.y-20,18,10,0,Math.PI,0); ctx.fill();
+    ctx.fillStyle="#8a6c3d"; ctx.fillRect(activeEvent.x-8,activeEvent.y-6,16,12);
+  } else if(activeEvent.type==="heli" && activeEvent.phase==="warning"){
+    ctx.fillStyle = "rgba(255,60,60,0.25)";
+    ctx.beginPath(); ctx.arc(activeEvent.x, activeEvent.y, 90*(1-activeEvent.timer/2.5), 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle="#c0392b"; ctx.font="bold 12px Arial"; ctx.textAlign="center";
+    ctx.fillText("⚠ INCOMING", activeEvent.x, activeEvent.y-70);
+    ctx.textAlign="left";
+  }
+}
+
+// ---------------------------------------------------------------------
+// SEASONAL EVENTS — a cosmetic theme selected from the main menu.
+// ---------------------------------------------------------------------
+let currentSeason = "none";
+const SEASON_INFO = {
+  none:      { name:"No Theme", desc:"Standard look", tint:null },
+  halloween: { name:"Halloween", desc:"Pumpkins & fog", tint:"rgba(255,120,20,0.08)" },
+  christmas: { name:"Christmas", desc:"Snow falls", tint:"rgba(140,180,255,0.10)" },
+  summer:    { name:"Summer", desc:"Bright & warm", tint:"rgba(255,220,120,0.08)" },
+};
+const seasonParticles = Array.from({length:50}, () => ({x:Math.random()*WORLD_W, y:Math.random()*WORLD_H, speed:rand(20,60), drift:rand(-15,15), size:rand(2,4)}));
+function updateSeasonalFX(dt){
+  if(currentSeason==="none") return;
+  for(const p of seasonParticles){
+    p.y += p.speed*dt; p.x += p.drift*dt;
+    if(p.y>WORLD_H){ p.y=-5; p.x=Math.random()*WORLD_W; }
+  }
+}
+function drawSeasonalFX(){
+  const info = SEASON_INFO[currentSeason];
+  if(!info || !info.tint) return;
+  ctx.fillStyle = info.tint; ctx.fillRect(0,0,WORLD_W,WORLD_H);
+  if(currentSeason==="christmas"){
+    ctx.fillStyle="rgba(255,255,255,0.85)";
+    for(const p of seasonParticles){ ctx.beginPath(); ctx.arc(p.x,p.y,p.size,0,Math.PI*2); ctx.fill(); }
+  } else if(currentSeason==="halloween"){
+    ctx.font="14px Arial"; ctx.textAlign="center";
+    for(const p of seasonParticles){ if(p.size>3) ctx.fillText("🍂", p.x, p.y); }
+    ctx.textAlign="left";
+  } else if(currentSeason==="summer"){
+    ctx.save(); ctx.globalCompositeOperation="lighter";
+    const grad = ctx.createRadialGradient(WORLD_W-60,50,0,WORLD_W-60,50,140);
+    grad.addColorStop(0,"rgba(255,240,180,0.35)"); grad.addColorStop(1,"rgba(255,240,180,0)");
+    ctx.fillStyle=grad; ctx.fillRect(0,0,WORLD_W,WORLD_H);
+    ctx.restore();
+  }
+}
+function buildSeasonSelect(){
+  let box = $("seasonSelect");
+  if(!box){
+    const panel = document.createElement("div");
+    panel.className = "panel-box";
+    panel.style.textAlign = "left";
+    panel.innerHTML = `<div class="row" style="border-bottom:none;"><span>Event Theme</span></div><div id="seasonSelect" style="display:flex; gap:8px; flex-wrap:wrap;"></div>`;
+    ui.mapSelect.closest(".panel-box").insertAdjacentElement("afterend", panel);
+    box = $("seasonSelect");
+  }
+  box.innerHTML = "";
+  Object.keys(SEASON_INFO).forEach((key) => {
+    const s = SEASON_INFO[key];
+    const btn = document.createElement("button");
+    btn.className = "map-btn" + (key===currentSeason ? " active" : "");
+    btn.innerHTML = `<b>${s.name}</b><span>${s.desc}</span>`;
+    btn.addEventListener("click", () => { Sound.uiClick(); currentSeason = key; buildSeasonSelect(); });
+    box.appendChild(btn);
+  });
+}
+
+// ---------------------------------------------------------------------
+// PHOTO MODE — pause, hide HUD, free-pan/zoom camera, save a PNG.
+// ---------------------------------------------------------------------
+const photoCam = { x:0, y:0, zoom:1 };
+let photoModeFrom = MODE.PAUSED;
+function enterPhotoMode(){
+  photoModeFrom = game.mode;
+  game.mode = MODE.PHOTO;
+  photoCam.x=0; photoCam.y=0; photoCam.zoom=1;
+  document.getElementById("app").classList.add("photo-hide-hud");
+  buildPhotoToolbar();
+  photoToolbar.style.display = "flex";
+}
+function exitPhotoMode(){
+  game.mode = MODE.PAUSED;
+  document.getElementById("app").classList.remove("photo-hide-hud");
+  photoToolbar.style.display = "none";
+  ui.pauseOverlay.classList.add("show");
+}
+const photoToolbar = document.createElement("div");
+photoToolbar.style.cssText = "position:absolute; bottom:10px; left:50%; transform:translateX(-50%); display:none; "+
+  "gap:8px; z-index:30; background:rgba(10,12,15,0.8); padding:8px; border-radius:10px;";
+document.getElementById("stage").appendChild(photoToolbar);
+function buildPhotoToolbar(){
+  photoToolbar.innerHTML = "";
+  const mkBtn = (label, fn) => { const b=document.createElement("button"); b.className="secondary"; b.textContent=label; b.addEventListener("click",fn); photoToolbar.appendChild(b); };
+  mkBtn("🔍+", () => { photoCam.zoom = clamp(photoCam.zoom+0.15,0.6,2.5); });
+  mkBtn("🔍-", () => { photoCam.zoom = clamp(photoCam.zoom-0.15,0.6,2.5); });
+  mkBtn("↺ Reset", () => { photoCam.x=0; photoCam.y=0; photoCam.zoom=1; });
+  mkBtn("📷 Save Photo", () => savePhoto());
+  mkBtn("✕ Exit", () => exitPhotoMode());
+}
+let photoDragging = false, photoDragLast = {x:0,y:0};
+canvas.addEventListener("pointerdown", (e) => {
+  if(game.mode!==MODE.PHOTO) return;
+  photoDragging = true; photoDragLast = {x:e.clientX, y:e.clientY};
+});
+window.addEventListener("pointermove", (e) => {
+  if(!photoDragging || game.mode!==MODE.PHOTO) return;
+  const dx = e.clientX-photoDragLast.x, dy = e.clientY-photoDragLast.y;
+  photoDragLast = {x:e.clientX, y:e.clientY};
+  photoCam.x -= dx/photoCam.zoom; photoCam.y -= dy/photoCam.zoom;
+});
+window.addEventListener("pointerup", () => { photoDragging = false; });
+function savePhoto(){
+  const link = document.createElement("a");
+  link.download = `zombie-survival-${Date.now()}.png`;
+  link.href = canvas.toDataURL("image/png");
+  link.click();
+  pushToast("📷 Photo saved to downloads");
+}
+(function injectPhotoModeCSS(){
+  const style = document.createElement("style");
+  style.textContent = `.photo-hide-hud #hud, .photo-hide-hud .weapon-select, .photo-hide-hud .hotbar,
+    .photo-hide-hud #toastWrap, .photo-hide-hud #killFeed, .photo-hide-hud #comboCounter { display:none !important; }`;
+  document.head.appendChild(style);
+})();
+
 function update(dt){
   if(game.mode !== MODE.PLAYING) return;
 
@@ -2427,6 +2773,10 @@ function update(dt){
   updateSurvivalStats(dt);
   updateCombo(dt);
   updateWaveProgress();
+  updateDynamicEvents(dt);
+  updateSeasonalFX(dt);
+  recordReplaySnapshot(dt);
+  if(discoTimer>0) discoTimer -= dt;
   updateUI();
   updateComboUI();
 
@@ -2630,9 +2980,16 @@ function drawCrosshair(){
 }
 
 function draw(dt){
+  if(game.mode===MODE.REPLAY){ drawReplay(); return; }
+
   ctx.save();
   if(game.shakeTime>0){
     ctx.translate((Math.random()-0.5)*game.shakeMag, (Math.random()-0.5)*game.shakeMag);
+  }
+  if(game.mode===MODE.PHOTO){
+    ctx.translate(WORLD_W/2, WORLD_H/2);
+    ctx.scale(photoCam.zoom, photoCam.zoom);
+    ctx.translate(-WORLD_W/2 - photoCam.x, -WORLD_H/2 - photoCam.y);
   }
 
   ctx.fillStyle=MAPS[currentMapKey].groundColor; ctx.fillRect(-10,-10,WORLD_W+20,WORLD_H+20);
@@ -2644,6 +3001,7 @@ function draw(dt){
   drawCrates();
   drawTraps();
   drawPickups();
+  drawDynamicEvents();
   drawParticles();
   drawShockwaves();
   drawPlayer();
@@ -2655,12 +3013,13 @@ function draw(dt){
   drawBossBar();
   drawFog(dt);
   drawWeather();
+  drawSeasonalFX();
   drawDayNightOverlay();
   drawFlashlightCone();
   drawWeaponLaser();
   drawFogVignette();
   if(game.mode===MODE.PLAYING) drawCrosshair();
-  drawMinimap();
+  if(game.mode!==MODE.PHOTO) drawMinimap();
 
   ctx.restore();
 }
@@ -2743,10 +3102,39 @@ function toggleCraft(){
   }
 }
 
+const ZOMBIE_LABELS = { normal:"Shamblers", fast:"Runners", tank:"Tanks", spitter:"Spitters", screamer:"Screamers", crawler:"Crawlers", chicken:"Chicken (!)", boss:"Bosses" };
+
+const gameOverExtras = document.createElement("div");
+gameOverExtras.className = "panel-box";
+gameOverExtras.style.textAlign = "left";
+ui.gameOverOverlay.insertBefore(gameOverExtras, $("gameOverRestartBtn"));
+
 function triggerGameOver(){
   game.mode = MODE.GAMEOVER;
   Sound.gameOver();
+
+  const survivedSec = Math.round((performance.now()-stats.runStartTime)/1000);
+  const mm = Math.floor(survivedSec/60), ss = String(survivedSec%60).padStart(2,"0");
+  const top = topKilledType();
+  meta.bestScore = Math.max(meta.bestScore, game.score);
+  meta.bestWave = Math.max(meta.bestWave, game.wave);
+  meta.runsPlayed++;
+  saveMeta();
+
   ui.gameOverStats.textContent = `Score: ${game.score} · Wave ${game.wave} · Coins ${player.coins} · Level ${player.level} · Best combo ${comboBestThisRun}x`;
+
+  const rows = [
+    ["⏱️ Survived", `${mm}:${ss}`],
+    ["🎯 Accuracy", `${statAccuracy()}% (${stats.shotsHit}/${stats.shotsFired})`],
+    ["💥 Damage dealt", Math.round(stats.damageDealt)],
+    ["🩸 Damage taken", Math.round(stats.damageTaken)],
+    ["🏅 Nemesis", top ? `${ZOMBIE_LABELS[top.type]||top.type} (${top.count} kills)` : "—"],
+    ["🏆 Best score (all-time)", meta.bestScore],
+    ["🌊 Best wave (all-time)", meta.bestWave],
+  ];
+  gameOverExtras.innerHTML = `<h3 style="margin:0 0 6px; font-size:14px; color:var(--accent);">Match Statistics</h3>` +
+    rows.map(([label,val]) => `<div class="row"><span>${label}</span><b>${val}</b></div>`).join("");
+
   ui.gameOverOverlay.classList.add("show");
 }
 
@@ -2764,6 +3152,10 @@ function resetGameState(){
   player.coins=0; player.xp=0; player.level=1; player.xpToNext=xpForNext(1);
 
   weapons = JSON.parse(JSON.stringify(WEAPON_BASE));
+  applyUnlockedWeapons();
+  resetStats();
+  killFeedEl.innerHTML = "";
+  discoTimer = 0;
   currentAmmo = { pistol: weapons.pistol.mag };
   currentWeaponKey = "pistol";
   reloading = false; heat = 0; meleeSwingTimer = 0;
@@ -2820,7 +3212,8 @@ function gameLoop(timestamp){
   dt = clamp(dt, 0, 1/15);
   game.lastFrameTime = timestamp;
 
-  update(dt);
+  if(game.mode===MODE.REPLAY) updateReplay(dt);
+  else update(dt);
   draw(dt);
   updateFpsCounter(dt);
 
@@ -2854,13 +3247,82 @@ $("toggleShake").addEventListener("change", (e) => { game.settings.shake = e.tar
 $("particleQuality").addEventListener("change", (e) => { game.settings.particleQuality = e.target.value; });
 $("toggleFps").addEventListener("change", (e) => { game.settings.showFps = e.target.checked; ui.fps.style.display = e.target.checked ? "block" : "none"; });
 
+// Photo mode button, added next to Pause's other controls
+const photoBtn = document.createElement("button");
+photoBtn.className = "secondary"; photoBtn.textContent = "📷 Photo Mode";
+photoBtn.addEventListener("click", () => { Sound.uiClick(); ui.pauseOverlay.classList.remove("show"); enterPhotoMode(); });
+$("pauseOverlay").querySelector("div").appendChild(photoBtn);
+
+// Reset progress button, added to Settings
+const resetRow = document.createElement("div");
+resetRow.className = "row";
+resetRow.innerHTML = `<span>Local Save Data</span>`;
+const resetBtn = document.createElement("button");
+resetBtn.className = "tiny danger"; resetBtn.textContent = "Reset Progress";
+resetBtn.addEventListener("click", () => {
+  meta = { bestScore:0, bestWave:0, totalKills:0, runsPlayed:0, unlockedWeapons:[], konamiUnlocked:false };
+  saveMeta(); pushToast("💾 Local save data cleared"); renderMenuMeta();
+});
+resetRow.appendChild(resetBtn);
+$("settingsOverlay").querySelector(".panel-box").appendChild(resetRow);
+
+// Best-score/wave readout on the main menu (populated from localStorage)
+const menuMetaEl = document.createElement("p");
+menuMetaEl.id = "menuMeta";
+menuMetaEl.style.cssText = "color:var(--gold); font-size:12px; margin-top:-6px;";
+$("menuOverlay").insertBefore(menuMetaEl, $("menuOverlay").querySelector(".panel-box"));
+function renderMenuMeta(){
+  menuMetaEl.textContent = meta.runsPlayed>0
+    ? `🏆 Best score ${meta.bestScore} · Best wave ${meta.bestWave} · ${meta.totalKills} lifetime kills`
+    : "";
+}
+
+// ---------------------------------------------------------------------
+// CINEMATIC INTRO — a short animated title sequence shown once on load,
+// before the main menu. Skippable with any key/click.
+// ---------------------------------------------------------------------
+const introOverlay = document.createElement("div");
+introOverlay.className = "overlay show";
+introOverlay.style.cssText += "background:#000; z-index:40; cursor:pointer;";
+introOverlay.innerHTML = `
+  <div id="introEyes" style="display:flex; gap:40px; opacity:0; transition:opacity 1.2s ease;">
+    <div style="width:14px;height:14px;border-radius:50%;background:#7CFC00;box-shadow:0 0 20px #7CFC00;"></div>
+    <div style="width:14px;height:14px;border-radius:50%;background:#7CFC00;box-shadow:0 0 20px #7CFC00;"></div>
+  </div>
+  <h1 id="introTitle" style="opacity:0; transform:scale(0.85); transition:opacity 1s ease, transform 1s ease; letter-spacing:4px;">🧟 ZOMBIE SURVIVAL PRO</h1>
+  <p id="introSub" style="opacity:0; transition:opacity 1s ease 0.3s;">the horde never sleeps</p>
+  <p style="opacity:0.5; font-size:11px;">click or press any key to skip</p>
+`;
+document.getElementById("stage").appendChild(introOverlay);
+function playIntro(){
+  ui.menuOverlay.classList.remove("show");
+  setTimeout(() => { $("introEyes").style.opacity = "1"; }, 200);
+  setTimeout(() => { $("introTitle").style.opacity = "1"; $("introTitle").style.transform="scale(1)"; }, 1000);
+  setTimeout(() => { $("introSub").style.opacity = "1"; }, 1600);
+  const finish = () => {
+    introOverlay.classList.remove("show");
+    ui.menuOverlay.classList.add("show");
+    introOverlay.removeEventListener("click", finish);
+    window.removeEventListener("keydown", finishOnKey);
+  };
+  const finishOnKey = () => finish();
+  introOverlay.addEventListener("click", finish);
+  window.addEventListener("keydown", finishOnKey, {once:true});
+  setTimeout(finish, 3600);
+}
+
 // Initial paint (menu background) + start loop
+loadMeta();
+renderMenuMeta();
 buildWeaponSelect();
 buildMapSelect();
+buildSeasonSelect();
 spawnCrates();
 vegetation = buildVegetation();
 renderInventory(); renderEquipment(); renderHotbar();
+playIntro();
 requestAnimationFrame(gameLoop);
+
 </script>
 </body>
 </html>
